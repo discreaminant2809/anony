@@ -16,35 +16,4 @@ fn main() {
 
     let serialized = serde_json::ser::to_string(&o1).unwrap();
     println!("{serialized}");
-
-    let _greater = {
-        let closure = || {
-            // let _ = Inner(|| todo!());
-            o1.name.clone()
-        };
-
-        {
-            enum Anonymous<F: Fn() -> String> {
-                Inner(Inner<F>)
-            }
-    
-            struct Inner<F: Fn() -> String>(F);
-    
-            impl<F: Fn() -> String> Greet for Anonymous<F> {
-                fn great(&self) -> String {
-                    match self {
-                        Anonymous::Inner(inner) => inner.0(),
-                    }
-                }
-            }
-    
-            Anonymous::Inner(Inner(closure))
-        }
-    };
-
-    // let _ = greater.0;
-}
-
-trait Greet {
-    fn great(&self) -> String;
 }
