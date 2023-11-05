@@ -1,6 +1,6 @@
 use crate::{pm, pm2};
 use quote::quote;
-use syn::{parse::Parse, Expr, Ident, Token, ExprPath};
+use syn::{parse::Parse, Expr, ExprPath, Ident, Token};
 
 struct Input {
     anonymous_fields: Vec<AnonymousField>,
