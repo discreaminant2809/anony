@@ -1,6 +1,6 @@
 use crate::{pm, pm2};
 use quote::quote;
-use syn::{parse::Parse, Expr, Ident, Token};
+use syn::{parse::Parse, Expr, Ident, Token, ExprPath};
 
 struct Input {
     anonymous_fields: Vec<AnonymousField>,
@@ -31,9 +31,15 @@ impl Parse for Input {
 
 impl Parse for AnonymousField {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let name = input.parse()?;
-        input.parse::<Token!(:)>()?;
-        let value = input.parse()?;
+        let name: Ident = input.parse()?;
+        let value = match input.parse::<Token!(:)>() {
+            Ok(_) => input.parse()?,
+            Err(_) => Expr::Path(ExprPath {
+                attrs: Default::default(),
+                qself: Default::default(),
+                path: name.clone().into(),
+            }),
+        };
         Ok(Self { name, value })
     }
 }
@@ -58,6 +64,12 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     let name_inits = names_let.clone();
     let exprs = anonymous_fields.iter().map(|field| &field.value);
 
+    let generics_impl_left = generics.clone();
+    let generics_impl_right = generics.clone();
+    let generics_into_inner = generics.clone();
+    let destruct_idents = names_let.clone();
+    let ret_idents = names_let.clone();
+
     #[cfg(feature = "serde")]
     let derive_serde = quote!(#[::core::prelude::v1::derive(::serde::Serialize)]);
     #[cfg(not(feature = "serde"))]
@@ -80,6 +92,13 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 #(
                     #field_decls
                 ),*
+            }
+
+            impl<#(#generics_impl_left),*> Anonymous<#(#generics_impl_right),*> {
+                fn into_inner(self) -> (#(#generics_into_inner),*) {
+                    let Anonymous { #(#destruct_idents),* } = self;
+                    (#(#ret_idents),*)
+                }
             }
 
             Anonymous {
