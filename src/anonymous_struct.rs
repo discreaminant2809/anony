@@ -1,6 +1,6 @@
-use quote::quote;
-use syn::{Ident, Expr, parse::Parse, Token};
 use crate::{pm, pm2};
+use quote::quote;
+use syn::{parse::Parse, Expr, Ident, Token};
 
 struct Input {
     anonymous_fields: Vec<AnonymousField>,
@@ -8,27 +8,24 @@ struct Input {
 
 struct AnonymousField {
     name: Ident,
-    value: Expr
+    value: Expr,
 }
 
 impl Parse for Input {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let anonymous_fields = std::iter
-            ::from_fn(|| {
-                let ret = (!input.is_empty()).then(|| input.parse::<AnonymousField>());
-                if let Err(e) = input.parse::<Token!(,)>() {
-                    if !input.is_empty() {
-                        return Some(Err(e));
-                    }
+        let anonymous_fields = std::iter::from_fn(|| {
+            let ret = (!input.is_empty()).then(|| input.parse::<AnonymousField>());
+            if let Err(e) = input.parse::<Token!(,)>() {
+                if !input.is_empty() {
+                    return Some(Err(e));
                 }
+            }
 
-                ret
-            })
-            .collect::<syn::Result<Vec<_>>>()?; 
-
-        Ok(Input {
-            anonymous_fields,
+            ret
         })
+        .collect::<syn::Result<Vec<_>>>()?;
+
+        Ok(Input { anonymous_fields })
     }
 }
 
@@ -48,19 +45,18 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     fn t_i(i: usize) -> Ident {
         Ident::new(&format!("T{i}"), pm2::Span::call_site())
     }
-    let generics = (0..anonymous_fields.len())
-        .map(t_i);
-    let field_decls = anonymous_fields.iter()
-        .enumerate()
-        .map(|(i, AnonymousField { name, .. })| {
-            let ty = t_i(i);
-            quote!(#name: #ty)
-        });
-    let names_let = anonymous_fields.iter()
-        .map(|field| &field.name);
+    let generics = (0..anonymous_fields.len()).map(t_i);
+    let field_decls =
+        anonymous_fields
+            .iter()
+            .enumerate()
+            .map(|(i, AnonymousField { name, .. })| {
+                let ty = t_i(i);
+                quote!(#name: #ty)
+            });
+    let names_let = anonymous_fields.iter().map(|field| &field.name);
     let name_inits = names_let.clone();
-    let exprs = anonymous_fields.iter()
-        .map(|field| &field.value);
+    let exprs = anonymous_fields.iter().map(|field| &field.value);
 
     #[cfg(feature = "serde")]
     let derive_serde = quote!(#[::core::prelude::v1::derive(::serde::Serialize)]);
@@ -85,7 +81,7 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                     #field_decls
                 ),*
             }
-    
+
             Anonymous {
                 #(
                     #name_inits
