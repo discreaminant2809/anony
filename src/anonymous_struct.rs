@@ -13,7 +13,7 @@ struct AnonymousField {
 
 impl Parse for Input {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let anonymous_fields = std::iter::from_fn(|| {
+        std::iter::from_fn(|| {
             let ret = (!input.is_empty()).then(|| input.parse::<AnonymousField>());
             if let Err(e) = input.parse::<Token!(,)>() {
                 if !input.is_empty() {
@@ -23,9 +23,8 @@ impl Parse for Input {
 
             ret
         })
-        .collect::<syn::Result<Vec<_>>>()?;
-
-        Ok(Input { anonymous_fields })
+        .collect::<syn::Result<Vec<_>>>()
+        .map(|anonymous_fields| Self { anonymous_fields })
     }
 }
 
@@ -48,6 +47,8 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     let input = syn::parse::<Input>(tt)?;
     let anonymous_fields = input.anonymous_fields;
 
+    // `anon` crate uses the fields' names for fields' type directly, which `#[forbid]` will kill it
+    // and uppercasing them is not really efficient so we use `T[n]` instead
     fn t_i(i: usize) -> Ident {
         Ident::new(&format!("T{i}"), pm2::Span::call_site())
     }
@@ -78,6 +79,7 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     Ok(quote!({
         let (#(#names_let),*) = (#(#exprs),*);
 
+        // Open another scope so that the captured values can't access the struct
         {
             // deriving `Default` is useless, since we can't get the type to call the method on
             #[::core::prelude::v1::derive(
@@ -87,20 +89,20 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 ::core::clone::Clone, ::core::marker::Copy,
             )]
             #derive_serde
-            struct Anonymous<#(#generics),*> {
+            struct Anony<#(#generics),*> {
                 #(
                     #field_decls
                 ),*
             }
 
-            impl<#(#generics_impl_left),*> Anonymous<#(#generics_impl_right),*> {
+            impl<#(#generics_impl_left),*> Anony<#(#generics_impl_right),*> {
                 fn into_inner(self) -> (#(#generics_into_inner),*) {
-                    let Anonymous { #(#destruct_idents),* } = self;
+                    let Anony { #(#destruct_idents),* } = self;
                     (#(#ret_idents),*)
                 }
             }
 
-            Anonymous {
+            Anony {
                 #(
                     #name_inits
                 ),*
