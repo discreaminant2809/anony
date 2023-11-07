@@ -79,10 +79,9 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
         let (#(#names_let),*) = (#(#exprs),*);
 
         {
-            // deriving `std::cmp`'s traits is useless, since it is the only object having the type Anonymous
             // deriving `Default` is useless, since we can't get the type to call the method on
             #[::core::prelude::v1::derive(
-                // ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
+                ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
                 ::core::fmt::Debug,
                 ::core::hash::Hash,
                 ::core::clone::Clone, ::core::marker::Copy,
