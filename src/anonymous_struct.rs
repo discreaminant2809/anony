@@ -1,5 +1,6 @@
 use crate::{pm, pm2};
-use quote::quote;
+use itertools::Itertools;
+use quote::{format_ident, quote};
 use syn::{parse::Parse, Expr, ExprPath, Ident, Token};
 
 struct Input {
@@ -47,10 +48,36 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     let input = syn::parse::<Input>(tt)?;
     let anonymous_fields = input.anonymous_fields;
 
+    #[cfg(feature = "serde")]
+    let derive_serde = quote!(#[::core::prelude::v1::derive(::serde::Serialize)]);
+    #[cfg(not(feature = "serde"))]
+    let derive_serde = quote!();
+
+    // Handle this case since `()` matching causes `#[warn(clippy::let_unit_value)]`
+    if anonymous_fields.is_empty() {
+        return Ok(quote!({
+            #[::core::prelude::v1::derive(
+                ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
+                ::core::hash::Hash,
+                ::core::clone::Clone, ::core::marker::Copy,
+            )]
+            #derive_serde
+            struct Anony;
+
+            impl ::core::fmt::Debug for Anony {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(f, "{}")
+                }
+            }
+
+            Anony
+        }));
+    }
+
     // `anon` crate uses the fields' names for fields' type directly, which `#[forbid]` will kill it
     // and uppercasing them is not really efficient so we use `T[n]` instead
     fn t_i(i: usize) -> Ident {
-        Ident::new(&format!("T{i}"), pm2::Span::call_site())
+        format_ident!("T{i}")
     }
     let generics = (0..anonymous_fields.len()).map(t_i);
     let field_decls =
@@ -68,13 +95,25 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     let generics_impl_left = generics.clone();
     let generics_impl_right = generics.clone();
     let generics_into_inner = generics.clone();
-    let destruct_idents = names_let.clone();
     let ret_idents = names_let.clone();
 
-    #[cfg(feature = "serde")]
-    let derive_serde = quote!(#[::core::prelude::v1::derive(::serde::Serialize)]);
-    #[cfg(not(feature = "serde"))]
-    let derive_serde = pm2::TokenStream::new();
+    let debug_generics_left = generics.clone();
+    let debug_generics_right = generics.clone();
+    let debug_each_field = names_let.clone().map(|debug_ident| {
+        quote!(
+            ::core::fmt::Formatter::write_str(f, ::core::stringify!(#debug_ident))?;
+            ::core::fmt::Formatter::write_str(f, ": ")?;
+            ::core::fmt::Debug::fmt(&self.#debug_ident, f)?;
+        )
+    });
+    let debug_no_alt = Itertools::intersperse_with(
+        debug_each_field.clone(),
+        || quote!(::core::fmt::Formatter::write_str(f, ", ")?;),
+    );
+    let debug_alt = Itertools::intersperse_with(
+        debug_each_field.clone(),
+        || quote!(::core::fmt::Formatter::write_str(f, ",\n    ")?;),
+    );
 
     Ok(quote!({
         let (#(#names_let),*) = (#(#exprs),*);
@@ -84,7 +123,6 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
             // deriving `Default` is useless, since we can't get the type to call the method on
             #[::core::prelude::v1::derive(
                 ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
-                ::core::fmt::Debug,
                 ::core::hash::Hash,
                 ::core::clone::Clone, ::core::marker::Copy,
             )]
@@ -95,17 +133,30 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 ),*
             }
 
+            #[automatically_derived]
             impl<#(#generics_impl_left),*> Anony<#(#generics_impl_right),*> {
                 fn into_inner(self) -> (#(#generics_into_inner),*) {
-                    let Anony { #(#destruct_idents),* } = self;
-                    (#(#ret_idents),*)
+                    (#(self.#ret_idents),*)
+                }
+            }
+
+            #[automatically_derived]
+            impl<#(#debug_generics_left: ::core::fmt::Debug),*> ::core::fmt::Debug for Anony<#(#debug_generics_right),*> {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    if ::core::fmt::Formatter::alternate(f) {
+                        ::core::fmt::Formatter::write_str(f, "{\n    ")?;
+                        #(#debug_alt)*
+                        ::core::fmt::Formatter::write_str(f, ",\n}")
+                    } else {
+                        ::core::fmt::Formatter::write_str(f, "{ ")?;
+                        #(#debug_no_alt)*
+                        ::core::fmt::Formatter::write_str(f, " }")
+                    }
                 }
             }
 
             Anony {
-                #(
-                    #name_inits
-                ),*
+                #(#name_inits),*
             }
         }
     }))

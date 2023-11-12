@@ -13,7 +13,7 @@
 //! };
 //!
 //! // Since all of the fields implement `Debug`, the type of the instance implements it also!`
-//! assert_eq!(format!("{x:?}"), r#"Anony { color: "Red", items: [1, 3, 5] }"#);
+//! assert_eq!(format!("{x:?}"), r#"{ color: "Red", items: [1, 3, 5] }"#);
 //! ```
 //!
 //! # Features
@@ -82,11 +82,11 @@ use proc_macro2 as pm2;
 ///
 /// This struct implements the following if all of its fields are implemented them:
 /// * All traits in [`std::cmp`]
-/// * [`std::fmt::Debug`]
-/// * [`std::hash::Hash`]
-/// * [`std::clone::Clone`]
-/// * [`std::marker::Copy`]
-/// * `serde::ser::Serialize` (require `serde` feature)
+/// * [`Debug`]
+/// * [`Hash`]
+/// * [`Clone`]
+/// * [`Copy`]
+/// * `Serialize` (require `serde` feature)
 #[proc_macro]
 pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
     anonymous_struct::imp(token_stream)
