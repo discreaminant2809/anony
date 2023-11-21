@@ -1,22 +1,26 @@
 //! Provides various anonymous type constructs
 //!
-//! # Macros
+//! ## Macros
+//!
 //! * `r#struct`: creates an instance of an anonymous struct
-//! ```
+//!
+//! ```rust
 //! use anony::r#struct;
 //!
 //! let items = vec![1, 3, 5];
 //!
 //! let x = r#struct! {
 //!     color: "Red".to_owned(),
-//!     items // move the `items` variable to the struct
+//!     // move the `items` variable to the struct
+//!     items
 //! };
 //!
-//! // Since all of the fields implement `Debug`, the type of the instance implements it also!`
+//! // Since all of the fields implement `Debug`, the type of the instance implements it also!
 //! assert_eq!(format!("{x:?}"), r#"{ color: "Red", items: [1, 3, 5] }"#);
 //! ```
 //!
-//! # Features
+//! ## Features
+//!
 //! * `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate
 
 #![deny(missing_docs)]

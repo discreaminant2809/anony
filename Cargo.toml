@@ -2,6 +2,10 @@
 name = "anony"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+description = "Anonymous struct"
+repository = "https://github.com/Blindfolded18/anony.git"
+readme = "README.md"
 
 [lib]
 proc-macro = true
@@ -9,7 +13,7 @@ proc-macro = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-itertools = "0.11.0"
+itertools = "0.12.0"
 proc-macro2 = "1.0.66"
 quote = "1.0.33"
 syn = { version = "2.0.30", features = ["full"] }
