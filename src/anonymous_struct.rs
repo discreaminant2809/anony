@@ -1,7 +1,7 @@
 use crate::{pm, pm2};
 use itertools::Itertools;
 use quote::{format_ident, quote};
-use syn::{parse::Parse, Expr, ExprPath, Ident, Token};
+use syn::{parse::Parse, Expr, Ident, Token};
 
 struct Input {
     anonymous_fields: Vec<AnonymousField>,
@@ -9,7 +9,7 @@ struct Input {
 
 struct AnonymousField {
     name: Ident,
-    value: Expr,
+    value: Option<Expr>,
 }
 
 impl Parse for Input {
@@ -33,13 +33,10 @@ impl Parse for AnonymousField {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let name: Ident = input.parse()?;
         let value = match input.parse::<Token!(:)>() {
-            Ok(_) => input.parse()?,
-            Err(_) => Expr::Path(ExprPath {
-                attrs: Default::default(),
-                qself: Default::default(),
-                path: name.clone().into(),
-            }),
+            Ok(_) => Some(input.parse()?),
+            Err(_) => None,
         };
+
         Ok(Self { name, value })
     }
 }
@@ -88,18 +85,25 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 let ty = t_i(i);
                 quote!(#name: #ty)
             });
-    let names_let = anonymous_fields.iter().map(|field| &field.name);
-    let name_inits = names_let.clone();
-    let exprs = anonymous_fields.iter().map(|field| &field.value);
+    let names = anonymous_fields.iter().map(|field| &field.name);
+
+    let names_let = anonymous_fields
+        .iter()
+        .filter(|field| field.value.is_some())
+        .map(|field| &field.name);
+    let name_inits = names.clone();
+    let exprs = anonymous_fields
+        .iter()
+        .filter_map(|field| field.value.as_ref());
 
     let generics_impl_left = generics.clone();
     let generics_impl_right = generics.clone();
     let generics_into_inner = generics.clone();
-    let ret_idents = names_let.clone();
+    let ret_idents = names.clone();
 
     let debug_generics_left = generics.clone();
     let debug_generics_right = generics.clone();
-    let debug_each_field = names_let.clone().map(|debug_ident| {
+    let debug_each_field = names.clone().map(|debug_ident| {
         quote!(
             ::core::fmt::Formatter::write_str(f, ::core::stringify!(#debug_ident))?;
             ::core::fmt::Formatter::write_str(f, ": ")?;
