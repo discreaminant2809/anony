@@ -1,5 +1,4 @@
 use crate::{pm, pm2};
-use itertools::Itertools;
 use quote::{format_ident, quote};
 use syn::{parse::Parse, Expr, Ident, Token};
 
@@ -103,21 +102,7 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
 
     let debug_generics_left = generics.clone();
     let debug_generics_right = generics.clone();
-    let debug_each_field = names.clone().map(|debug_ident| {
-        quote!(
-            ::core::fmt::Formatter::write_str(f, ::core::stringify!(#debug_ident))?;
-            ::core::fmt::Formatter::write_str(f, ": ")?;
-            ::core::fmt::Debug::fmt(&self.#debug_ident, f)?;
-        )
-    });
-    let debug_no_alt = Itertools::intersperse_with(
-        debug_each_field.clone(),
-        || quote!(::core::fmt::Formatter::write_str(f, ", ")?;),
-    );
-    let debug_alt = Itertools::intersperse_with(
-        debug_each_field.clone(),
-        || quote!(::core::fmt::Formatter::write_str(f, ",\n    ")?;),
-    );
+    let debug_idents = names.clone();
 
     Ok(quote!({
         let (#(#names_let),*) = (#(#exprs),*);
@@ -147,15 +132,11 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
             #[automatically_derived]
             impl<#(#debug_generics_left: ::core::fmt::Debug),*> ::core::fmt::Debug for Anony<#(#debug_generics_right),*> {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                    if ::core::fmt::Formatter::alternate(f) {
-                        ::core::fmt::Formatter::write_str(f, "{\n    ")?;
-                        #(#debug_alt)*
-                        ::core::fmt::Formatter::write_str(f, ",\n}")
-                    } else {
-                        ::core::fmt::Formatter::write_str(f, "{ ")?;
-                        #(#debug_no_alt)*
-                        ::core::fmt::Formatter::write_str(f, " }")
-                    }
+                    f.debug_struct("") // The name is concealed, but there is a single space before the opening curly bracket
+                        #(
+                            .field(::core::stringify!(#debug_idents), &self.#debug_idents)
+                        )*
+                        .finish()
                 }
             }
 
