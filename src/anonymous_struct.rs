@@ -95,11 +95,6 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
         .iter()
         .filter_map(|field| field.value.as_ref());
 
-    let generics_impl_left = generics.clone();
-    let generics_impl_right = generics.clone();
-    let generics_into_inner = generics.clone();
-    let ret_idents = names.clone();
-
     let debug_generics_left = generics.clone();
     let debug_generics_right = generics.clone();
     let debug_idents = names.clone();
@@ -120,13 +115,6 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 #(
                     #field_decls
                 ),*
-            }
-
-            #[automatically_derived]
-            impl<#(#generics_impl_left),*> Anony<#(#generics_impl_right),*> {
-                fn into_inner(self) -> (#(#generics_into_inner),*) {
-                    (#(self.#ret_idents),*)
-                }
             }
 
             #[automatically_derived]

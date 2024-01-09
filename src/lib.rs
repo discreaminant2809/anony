@@ -16,7 +16,7 @@
 //! };
 //!
 //! // Since all of the fields implement `Debug`, the type of the instance implements it also!
-//! assert_eq!(format!("{x:?}"), r#"{ color: "Red", items: [1, 3, 5] }"#);
+//! assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
 //! ```
 //!
 //! ## Features
@@ -62,8 +62,7 @@ use proc_macro2 as pm2;
 ///     },
 /// };
 /// ```
-/// You can use the instance's `into_inner` method to extract all of the fields, which can't normally be achieved
-/// since the struct name is anonymous.
+/// You can move fields one by one
 /// ```
 /// use anony::r#struct;
 ///
@@ -75,7 +74,9 @@ use proc_macro2 as pm2;
 ///     address,
 /// };
 ///
-/// let (name, age, address) = o1.into_inner();
+/// let name = o1.name;
+/// let age = o1.age;
+/// let address = o1.address;
 ///
 /// assert_eq!(name, "Alice");
 /// assert_eq!(age, 28);

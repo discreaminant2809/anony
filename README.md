@@ -16,7 +16,7 @@ let x = r#struct! {
 };
 
 // Since all of the fields implement `Debug`, the type of the instance implements it also!
-assert_eq!(format!("{x:?}"), r#"{ color: "Red", items: [1, 3, 5] }"#);
+assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
 ```
 
 ## Features
@@ -26,7 +26,5 @@ assert_eq!(format!("{x:?}"), r#"{ color: "Red", items: [1, 3, 5] }"#);
 ## Todos
 
 * "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method
-
-* Shared/mutable references to the struct's fields
 
 * Pinning projection to the struct's fields
