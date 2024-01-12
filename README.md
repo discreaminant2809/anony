@@ -26,5 +26,4 @@ assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
 ## Todos
 
 * "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method
-
-* Pinning projection to the struct's fields
+* `join!` and `join_cyclic!`: awaits multiple futures concurrently

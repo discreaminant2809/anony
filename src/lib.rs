@@ -82,6 +82,29 @@ use proc_macro2 as pm2;
 /// assert_eq!(age, 28);
 /// assert_eq!(address, "123 St. SW");
 /// ```
+/// Pinning projection (use `project` method, like you use `pin-project` crate)
+/// ```
+/// use std::pin::pin;
+/// use std::future::Future;
+/// use std::task::Context;
+/// use std::task::Poll;
+/// use anony::r#struct;
+/// use noop_waker::noop_waker;
+///
+/// let o1 = r#struct! {
+///     fut: async {
+///         let s = "10011001001";
+///         s.matches("1").count()
+///     }
+/// };
+///
+/// let o1 = pin!(o1);
+/// let waker = noop_waker();
+/// let mut cx = Context::from_waker(&waker);
+///
+/// // Project to the `fut` field
+/// assert_eq!(o1.project().fut.poll(&mut cx), Poll::Ready(5));
+/// ```
 ///
 /// # Derived traits
 ///
