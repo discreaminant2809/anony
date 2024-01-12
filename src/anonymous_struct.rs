@@ -75,16 +75,27 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     fn t_i(i: usize) -> Ident {
         format_ident!("T{i}")
     }
+
+    // base iterators of everything here! Most of the below just clone from the two here!
     let generics = (0..anonymous_fields.len()).map(t_i);
-    let field_decls =
-        anonymous_fields
-            .iter()
-            .enumerate()
-            .map(|(i, AnonymousField { name, .. })| {
-                let ty = t_i(i);
-                quote!(#name: #ty)
-            });
     let names = anonymous_fields.iter().map(|field| &field.name);
+
+    let anony_proj_generics = generics.clone();
+    let anony_proj_field_decls = names.clone().enumerate().map(|(i, name)| {
+        let ty = t_i(i);
+        quote!(#name: ::core::pin::Pin<&'a mut #ty>)
+    });
+
+    let impl_generics_left = generics.clone();
+    let impl_generics_right = generics.clone();
+
+    let anony_proj_ret_generics = generics.clone();
+    let anony_proj_name_inits = names.clone();
+
+    let field_decls = names.clone().enumerate().map(|(i, name)| {
+        let ty = t_i(i);
+        quote!(#name: #ty)
+    });
 
     let names_let = anonymous_fields
         .iter()
@@ -115,6 +126,30 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 #(
                     #field_decls
                 ),*
+            }
+
+            struct AnonyProj<'a, #(#anony_proj_generics),*> {
+                #(
+                    #anony_proj_field_decls
+                ),*
+            }
+
+            impl<#(#impl_generics_left),*> Anony<#(#impl_generics_right),*> {
+                fn project(self: ::core::pin::Pin<&mut Self>) -> AnonyProj<'_, #(#anony_proj_ret_generics),*> {
+                    // SAFETY: just a classic pinning projection! We guarantee that (see https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field):
+                    // 1. The anonymous struct is only Unpin if all the fields are Unpin (guaranteed by the `auto` impl)
+                    // 2. We don't provide a destructor for this type
+                    // 3. The same as the 2nd point
+                    // 4. We provide no operations leading to data being moved
+                    unsafe {
+                        let this = self.get_unchecked_mut();
+                        AnonyProj {
+                            #(
+                                #anony_proj_name_inits: ::core::pin::Pin::new_unchecked(&mut this.#anony_proj_name_inits)
+                            ),*
+                        }
+                    }
+                }
             }
 
             #[automatically_derived]
