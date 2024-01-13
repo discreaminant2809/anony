@@ -62,7 +62,7 @@ use proc_macro2 as pm2;
 ///     },
 /// };
 /// ```
-/// You can move fields one by one
+/// You can move fields one by one:
 /// ```
 /// use anony::r#struct;
 ///
@@ -82,7 +82,8 @@ use proc_macro2 as pm2;
 /// assert_eq!(age, 28);
 /// assert_eq!(address, "123 St. SW");
 /// ```
-/// Pinning projection (use `project` method, like you use `pin-project` crate)
+/// Pinning projection (use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, like you use `pin-project` crate).
+/// The struct created by `project_ref` (not `project_mut`) is implemented [`Clone`] and [`Copy`]:
 /// ```
 /// use std::pin::pin;
 /// use std::future::Future;
@@ -103,7 +104,7 @@ use proc_macro2 as pm2;
 /// let mut cx = Context::from_waker(&waker);
 ///
 /// // Project to the `fut` field
-/// assert_eq!(o1.project().fut.poll(&mut cx), Poll::Ready(5));
+/// assert_eq!(o1.project_mut().fut.poll(&mut cx), Poll::Ready(5));
 /// ```
 ///
 /// # Derived traits

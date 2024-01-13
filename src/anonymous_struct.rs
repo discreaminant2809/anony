@@ -60,6 +60,23 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
             #derive_serde
             struct Anony;
 
+            struct AnonyProjMut<'a>(::core::marker::PhantomData<::core::pin::Pin<&'a mut Anony>>);
+
+            #[derive(Clone, Copy)]
+            struct AnonyProjRef<'a>(::core::marker::PhantomData<::core::pin::Pin<&'a Anony>>);
+
+            impl Anony {
+                #[inline]
+                fn project_mut(self: ::core::pin::Pin<&mut Self>) -> AnonyProjMut<'_> {
+                    AnonyProjMut(::core::marker::PhantomData)
+                }
+
+                #[inline]
+                fn project_ref(self: ::core::pin::Pin<&mut Self>) -> AnonyProjRef<'_> {
+                    AnonyProjRef(::core::marker::PhantomData)
+                }
+            }
+
             impl ::core::fmt::Debug for Anony {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     ::core::fmt::Formatter::write_str(f, "{}")
@@ -85,12 +102,23 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
         let ty = t_i(i);
         quote!(#name: ::core::pin::Pin<&'a mut #ty>)
     });
+    let anony_proj_ref_generics = generics.clone();
+    let anony_proj_ref_field_decls = names.clone().enumerate().map(|(i, name)| {
+        let ty = t_i(i);
+        quote!(#name: ::core::pin::Pin<&'a #ty>)
+    });
 
     let impl_generics_left = generics.clone();
     let impl_generics_right = generics.clone();
 
     let anony_proj_ret_generics = generics.clone();
     let anony_proj_name_inits = names.clone();
+    let anony_proj_ref_ret_generics = generics.clone();
+    let anony_proj_ref_name_inits = names.clone();
+    let anony_proj_ref_clone_generics_left = generics.clone();
+    let anony_proj_ref_clone_generics_right = generics.clone();
+    let anony_proj_ref_copy_generics_left = generics.clone();
+    let anony_proj_ref_copy_generics_right = generics.clone();
 
     let field_decls = names.clone().enumerate().map(|(i, name)| {
         let ty = t_i(i);
@@ -128,14 +156,29 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 ),*
             }
 
-            struct AnonyProj<'a, #(#anony_proj_generics),*> {
+            struct AnonyProjMut<'a, #(#anony_proj_generics),*> {
                 #(
                     #anony_proj_field_decls
                 ),*
             }
 
+            struct AnonyProjRef<'a, #(#anony_proj_ref_generics),*> {
+                #(
+                    #anony_proj_ref_field_decls
+                ),*
+            }
+
+            impl<#(#anony_proj_ref_clone_generics_left),*> ::core::clone::Clone for AnonyProjRef<'_, #(#anony_proj_ref_clone_generics_right),*> {
+                #[inline]
+                fn clone(&self) -> Self {
+                    *self
+                }
+            }
+
+            impl<#(#anony_proj_ref_copy_generics_left),*> ::core::marker::Copy for AnonyProjRef<'_, #(#anony_proj_ref_copy_generics_right),*> {}
+
             impl<#(#impl_generics_left),*> Anony<#(#impl_generics_right),*> {
-                fn project(self: ::core::pin::Pin<&mut Self>) -> AnonyProj<'_, #(#anony_proj_ret_generics),*> {
+                fn project_mut(self: ::core::pin::Pin<&mut Self>) -> AnonyProjMut<'_, #(#anony_proj_ret_generics),*> {
                     // SAFETY: just a classic pinning projection! We guarantee that (see https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field):
                     // 1. The anonymous struct is only Unpin if all the fields are Unpin (guaranteed by the `auto` impl)
                     // 2. We don't provide a destructor for this type
@@ -143,16 +186,28 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                     // 4. We provide no operations leading to data being moved
                     unsafe {
                         let this = self.get_unchecked_mut();
-                        AnonyProj {
+                        AnonyProjMut {
                             #(
                                 #anony_proj_name_inits: ::core::pin::Pin::new_unchecked(&mut this.#anony_proj_name_inits)
                             ),*
                         }
                     }
                 }
+
+                fn project_ref(self: ::core::pin::Pin<&Self>) -> AnonyProjRef<'_, #(#anony_proj_ref_ret_generics),*> {
+                    let this = self.get_ref(); // this method is SAFE!
+
+                    // SAFETY: see the `project_mut` method
+                    unsafe {
+                        AnonyProjRef {
+                            #(
+                                #anony_proj_ref_name_inits: ::core::pin::Pin::new_unchecked(&this.#anony_proj_ref_name_inits)
+                            ),*
+                        }
+                    }
+                }
             }
 
-            #[automatically_derived]
             impl<#(#debug_generics_left: ::core::fmt::Debug),*> ::core::fmt::Debug for Anony<#(#debug_generics_right),*> {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     f.debug_struct("") // The name is concealed, but there is a single space before the opening curly bracket
