@@ -1,6 +1,6 @@
 [package]
 name = "anony"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Anonymous struct"
@@ -21,6 +21,8 @@ syn = { version = "2.0.30", features = ["full"] }
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = "1.0.107"
 noop-waker = "0.1.0"
+tokio = { version = "1.35.1", features = ["full"] }
+futures = "0.3.30"
 
 [features]
 default = []
