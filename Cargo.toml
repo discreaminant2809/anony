@@ -14,12 +14,12 @@ proc-macro = true
 
 [dependencies]
 proc-macro2 = "1.0.66"
-quote = "1.0.33"
+quote = "1.0.35"
 syn = { version = "2.0.30", features = ["full"] }
 
 [dev-dependencies]
-serde = { version = "1.0.189", features = ["derive"] }
-serde_json = "1.0.107"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
 noop-waker = "0.1.0"
 tokio = { version = "1.35.1", features = ["full"] }
 futures = "0.3.30"
@@ -45,9 +45,11 @@ required-features = ["future"]
 name = "comparisons"
 required-features = ["future"]
 
+# This isn't in `examples`
+# This is just for prototyping macros
 [[example]]
 name = "hand_expand"
-required-features = ["future"]
+required-features = ["serde", "future"]
 
 [[test]]
 name = "join"

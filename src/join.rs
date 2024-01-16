@@ -5,7 +5,7 @@ use syn::{parse::Parse, punctuated::Punctuated, Expr, Token};
 
 use crate::pm2;
 
-pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStream> {
+pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm2::TokenStream> {
     // The implementation here exists even before my `r#struct!` macro, so the code here doesn't really match with `r#struct!`!
     // However, their `phylosophies` are consistent: open a new scope, "capture" all varriables with tuple matching,
     // then open another scope, define structs here and finally move all of these variables to create a new anonymous struct
@@ -15,13 +15,18 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
     let must_use = quote!(
         #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
     );
+    let (join_ty_at_decl, join_ty_at_impl, join_ty_at_ret) = if is_cyclic {
+        (quote!(JoinCyclic), quote!(JoinCyclic), quote!(JoinCyclic))
+    } else {
+        (quote!(Join), quote!(Join), quote!(Join))
+    };
 
     if exprs.is_empty() {
         return Ok(quote!({
             #must_use
-            struct Join;
+            struct #join_ty_at_decl;
 
-            impl ::core::future::Future for Join {
+            impl ::core::future::Future for #join_ty_at_impl {
                 type Output = ();
 
                 #[inline]
@@ -33,7 +38,7 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
                 }
             }
 
-            Join
+            #join_ty_at_ret
         }));
     } else if exprs.len() == 1 {
         let expr = exprs.into_iter().next().unwrap();
@@ -43,11 +48,11 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
             {
                 #must_use
                 #[repr(transparent)]
-                enum Join<F> {
+                enum #join_ty_at_decl<F> {
                     Inner(F)
                 }
 
-                impl<F: ::core::future::Future> ::core::future::Future for Join<F> {
+                impl<F: ::core::future::Future> ::core::future::Future for #join_ty_at_impl<F> {
                     type Output = (<F as ::core::future::Future>::Output,);
 
                     #[inline]
@@ -65,10 +70,12 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
                     }
                 }
 
-                Join::Inner(fut)
+                #join_ty_at_ret::Inner(fut)
             }
         }));
     }
+
+    let fut_count = exprs.len();
 
     let captured_futs_input = exprs.iter();
 
@@ -89,6 +96,50 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
     let maybe_done_vars_at_destructuring = maybe_done_vars.clone();
 
     let maybe_done_vars_at_polling = maybe_done_vars.clone();
+
+    let (skip_next_time_ty, skip_next_time_var, skip_next_time_init) = if is_cyclic {
+        (quote!(usize), quote!(skip_next_time), quote!(0))
+    } else {
+        (quote!(), quote!(), quote!())
+    };
+
+    let polling_strategy = if is_cyclic {
+        // For `join_cyclic!`, we will use `tokio`'s approach
+        // See https://docs.rs/tokio/latest/src/tokio/macros/join.rs.html#57-166
+        quote!(
+            const COUNT: usize = #fut_count;
+            let mut done = true;
+            let mut to_run = COUNT;
+            // `skip_next_time` is NOT structurally pinned
+            let mut skip = ::core::mem::replace(
+                skip_next_time,
+                if *skip_next_time + 1 == COUNT { 0 } else { *skip_next_time + 1 }
+            );
+
+            loop {
+                #(
+                    if skip == 0 {
+                        if to_run == 0 {
+                            break;
+                        }
+                        to_run -= 1;
+
+                        done &= MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx);
+                    } else {
+                        skip -= 1;
+                    }
+                )*
+            }
+
+            done
+        )
+    } else {
+        quote!(
+            #(
+                MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx)
+            )&* // only use a single ampersand here, since we must poll all of these futures and not short-circuit any
+        )
+    };
 
     let o_matching = (0..exprs.len()).map(|i| format_ident!("o{i}"));
 
@@ -162,20 +213,23 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
 
             #must_use
             // #[pin_project]
-            enum Join<#(#fut_generics_bounded_at_decl: ::core::future::Future),*> {
+            enum #join_ty_at_decl<#(#fut_generics_bounded_at_decl: ::core::future::Future),*> {
                 // We encapsulate fields using enum variant!
                 // To access these fields, we must pattern matching with this variant, which requires us to write `Join::Inner`...
                 // wait... we can't even specify the struct's name to begin with!
                 // Therefore, we have effectively made these fields "private"!
-                Inner(#(
-                    // Collectively, `Join` only requires all wrapped futures to be `Unpin`,
-                    // and don't care whether their outputs are `Unpin` or not
-                    // #[pin]
-                    MaybeDone<#fut_generics_at_maybe_done>
-                ),*)
+                Inner(
+                    #(
+                        // Collectively, `Join` only requires all wrapped futures to be `Unpin`,
+                        // and don't care whether their outputs are `Unpin` or not
+                        // #[pin]
+                        MaybeDone<#fut_generics_at_maybe_done>
+                    ),*,
+                    #skip_next_time_ty
+                )
             }
 
-            impl<#(#fut_generics_bounded_at_impl: ::core::future::Future),*> ::core::future::Future for Join<#(#fut_generics_at_impl),*> {
+            impl<#(#fut_generics_bounded_at_impl: ::core::future::Future),*> ::core::future::Future for #join_ty_at_impl<#(#fut_generics_at_impl),*> {
                 // we include the additional comma in the end
                 // previously we should return an 1-ary tuple on having just 1 future to join so that it consistently with 1-ary tuple's construct.
                 // However, it is not neccessary anymore! We generate a different implementation for 1-ary `join!``
@@ -186,15 +240,13 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
                     cx: &mut ::core::task::Context<'_>
                 ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
                     // SAFETY: pinning projection! All `Maybedone`s are structurally pinned
-                    let Self::Inner(#(#maybe_done_vars_at_destructuring),*) = unsafe {
+                    let Self::Inner(#(#maybe_done_vars_at_destructuring),*, #skip_next_time_var) = unsafe {
                         ::core::pin::Pin::get_unchecked_mut(self)
                     };
 
                     if !unsafe {
-                        #(
-                            MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx)
-                        )&* // only use a single ampersand here, since we must poll all of these futures and not short-circuit any
-                    }{
+                        #polling_strategy
+                    } {
                         return ::core::task::Poll::Pending;
                     }
 
@@ -207,7 +259,7 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
                 }
             }
 
-            Join::Inner(#(MaybeDone::Pending(#futs_to_maybe_done)),*)
+            #join_ty_at_ret::Inner(#(MaybeDone::Pending(#futs_to_maybe_done)),*, #skip_next_time_init)
         }
     }))
 }

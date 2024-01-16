@@ -132,7 +132,17 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
-    join::imp_join(token_stream)
+    join::imp(token_stream, false)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+#[allow(missing_docs)]
+#[proc_macro]
+#[cfg(feature = "future")]
+#[cfg_attr(docsrs, doc(cfg(feature = "future")))]
+pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
+    join::imp(token_stream, true)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
