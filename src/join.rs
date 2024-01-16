@@ -35,6 +35,39 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
 
             Join
         }));
+    } else if exprs.len() == 1 {
+        let expr = exprs.into_iter().next().unwrap();
+        return Ok(quote!({
+            let fut = #expr;
+
+            {
+                #must_use
+                #[repr(transparent)]
+                enum Join<F> {
+                    Inner(F)
+                }
+
+                impl<F: ::core::future::Future> ::core::future::Future for Join<F> {
+                    type Output = (<F as ::core::future::Future>::Output,);
+
+                    #[inline]
+                    fn poll(
+                        self: ::core::pin::Pin<&mut Self>,
+                        cx: &mut ::core::task::Context<'_>
+                    ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
+                        // SAFETY: pinning projection. The wrapped future is structurally pinned
+                        ::core::future::Future::poll(unsafe {
+                            self.map_unchecked_mut(|this| {
+                                let Self::Inner(fut) = this;
+                                fut
+                            })
+                        }, cx).map(|o| (o,))
+                    }
+                }
+
+                Join::Inner(fut)
+            }
+        }));
     }
 
     let captured_futs_input = exprs.iter();
@@ -143,8 +176,9 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
             }
 
             impl<#(#fut_generics_bounded_at_impl: ::core::future::Future),*> ::core::future::Future for Join<#(#fut_generics_at_impl),*> {
-                // we include the additional comma in the end so that we should return an 1-ary tuple on having just 1 future to join
-                // so that it consistently with 1-ary tuple's construct.
+                // we include the additional comma in the end
+                // previously we should return an 1-ary tuple on having just 1 future to join so that it consistently with 1-ary tuple's construct.
+                // However, it is not neccessary anymore! We generate a different implementation for 1-ary `join!``
                 type Output = (#(<#outputs as ::core::future::Future>::Output),* ,);
 
                 fn poll(

@@ -47,6 +47,17 @@ async fn join_result() {
 }
 
 #[tokio::test]
+async fn join_1_ary() {
+    let fut = async {
+        sleep(Duration::from_millis(1)).await;
+        12
+    };
+
+    assert_eq!(join!(fut).await, (12,));
+    // join!(async { Join::Inner(async {}).await }).await;
+}
+
+#[tokio::test]
 async fn should_poll_all() {
     #[derive(Clone, Default)]
     struct ControlledFuture {
