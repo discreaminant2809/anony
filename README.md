@@ -22,6 +22,7 @@ assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
 ## Features
 
 * `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate
+* `future`: allow anonymous types implementing `Future`, such as `join!`
 
 ## Todos
 

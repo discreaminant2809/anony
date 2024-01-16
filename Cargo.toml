@@ -27,7 +27,28 @@ futures = "0.3.30"
 [features]
 default = []
 serde = []
+future = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [[example]]
 name = "anonymous_struct"
 required-features = ["serde"]
+
+[[example]]
+name = "join"
+required-features = ["future"]
+
+[[example]]
+name = "comparisons"
+required-features = ["future"]
+
+[[example]]
+name = "hand_expand"
+required-features = ["future"]
+
+[[test]]
+name = "join"
+required-features = ["future"]

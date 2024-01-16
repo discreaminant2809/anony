@@ -1,3 +1,5 @@
+#![cfg(feature = "future")]
+
 use quote::quote;
 use syn::{parse::Parse, punctuated::Punctuated, Expr, Token};
 

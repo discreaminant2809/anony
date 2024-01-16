@@ -22,10 +22,13 @@
 //! ## Features
 //!
 //! * `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate
+//! * `future`: allows [`std::future::Future`] anonymous types, such as `join!`
 
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod anonymous_struct;
+#[cfg(feature = "future")]
 mod join;
 
 use proc_macro as pm;
@@ -126,6 +129,8 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 
 #[allow(missing_docs)]
 #[proc_macro]
+#[cfg(feature = "future")]
+#[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
     join::imp_join(token_stream)
         .unwrap_or_else(|e| e.into_compile_error())
