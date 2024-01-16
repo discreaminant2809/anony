@@ -1,6 +1,6 @@
 #![cfg(feature = "future")]
 
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{parse::Parse, punctuated::Punctuated, Expr, Token};
 
 use crate::pm2;
@@ -39,8 +39,7 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
 
     let captured_futs_input = exprs.iter();
 
-    let fut_generics =
-        (0..exprs.len()).map(|i| pm2::Ident::new(&format!("F{i}"), pm2::Span::call_site()));
+    let fut_generics = (0..exprs.len()).map(|i| format_ident!("F{i}"));
 
     let fut_generics_at_impl = fut_generics.clone();
 
@@ -52,15 +51,13 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
 
     let outputs = fut_generics.clone();
 
-    let maybe_done_vars = (0..exprs.len())
-        .map(|i| pm2::Ident::new(&format!("maybe_done{i}"), pm2::Span::call_site()));
+    let maybe_done_vars = (0..exprs.len()).map(|i| format_ident!("maybe_done{i}"));
 
     let maybe_done_vars_at_destructuring = maybe_done_vars.clone();
 
     let maybe_done_vars_at_polling = maybe_done_vars.clone();
 
-    let o_matching =
-        (0..exprs.len()).map(|i| pm2::Ident::new(&format!("o{i}"), pm2::Span::call_site()));
+    let o_matching = (0..exprs.len()).map(|i| format_ident!("o{i}"));
 
     let o_return = o_matching.clone();
 
