@@ -11,7 +11,7 @@ pub(crate) fn imp_join(tt: crate::pm::TokenStream) -> syn::Result<pm2::TokenStre
     let exprs = parse_exprs(tt)?;
 
     let must_use = quote!(
-        #[must_use = "unlike other's `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+        #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
     );
 
     if exprs.is_empty() {
