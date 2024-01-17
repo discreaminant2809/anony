@@ -47,12 +47,6 @@ required-features = ["future"]
 name = "comparisons"
 required-features = ["future"]
 
-# This isn't in `examples`
-# This is just for prototyping macros
-[[example]]
-name = "hand_expand"
-required-features = ["serde", "future"]
-
 [[test]]
 name = "join"
 required-features = ["future"]
