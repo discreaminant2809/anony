@@ -2,7 +2,7 @@
 //!
 //! ## Macros
 //!
-//! * `r#struct`: creates an instance of an anonymous struct
+//! * [`struct!`]: creates an instance of an anonymous struct.
 //!
 //! ```rust
 //! use anony::r#struct;
@@ -19,10 +19,20 @@
 //! assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
 //! ```
 //!
+//! * [`join!`] and [`join_cyclic!`]: join multiple futures. Require `future` feature.
+//!
+//! ```rust
+//! # futures::executor::block_on(async {
+//! use anony::join;
+//!
+//! assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
+//! # });
+//! ```
+//!
 //! ## Features
 //!
-//! * `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate
-//! * `future`: allows [`std::future::Future`] anonymous types, such as `join!`
+//! * `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate.
+//! * `future`: allows [`std::future::Future`] anonymous types, such as [`join!`].
 
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -127,7 +137,31 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-#[allow(missing_docs)]
+/// Returns a future that "joins" multiple futures that will be completed concurrently.
+///
+/// It's output is a tuple of input futures' outputs.
+///
+/// It is more efficient than awaiting futures like this: `(fut1.await, fut2.await, fut3.await)`, since these futures will be resolved
+/// **sequencially** (`fut1` must be done first before awaiting `fut2`, and `fut3`). `join!(fut1, fut2, fut3).await` will poll every futures
+/// on getting polled, which makes them concurrently awaited.
+///
+/// Unlike other `join`'s implementations, this one returns an instance of an anonymous type implemented [`std::future::Future`]
+/// instead of requiring it to be inside any async contexts. You will be warned if you neither `.await`, `poll`, nor return it.
+///
+/// This future will always poll the first input future first, which is similar to the `futures`'s one.
+/// For example, `join!(fut1, fut2, fut3)` always polls `fut1` first on being polled.
+/// If fairness is your concern, consider using [`join_cyclic!`], which is less efficient but fairer.
+///
+/// ```rust
+/// # futures::executor::block_on(async {
+/// use anony::join;
+///
+/// let a = async { 1 };
+/// let b = async { 2 };
+/// let c = async { 3 };
+/// assert_eq!(join!(a, b, c).await, (1, 2, 3));
+/// # });
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
@@ -137,7 +171,33 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-#[allow(missing_docs)]
+/// Returns a future that "joins" multiple futures that will be completed concurrently, using cycling polling strategy.
+///
+/// It's output is a tuple of input futures' outputs.
+///
+/// It is more efficient than awaiting futures like this: `(fut1.await, fut2.await, fut3.await)`, since these futures will be resolved
+/// **sequencially** (`fut1` must be done first before awaiting `fut2`, and `fut3`). `join!(fut1, fut2, fut3).await` will poll every futures
+/// on getting polled, which makes them concurrently awaited.
+///
+/// Unlike other `join`'s implementations, this one returns an instance of an anonymous type implemented [`std::future::Future`]
+/// instead of requiring it to be inside any async contexts. You will be warned if you neither `.await`, `poll`, nor return it.
+///
+/// This future will cycle the first future to be polled for each time it is polled, which is similar to the `tokio`'s one.
+/// For example, `join!(fut1, fut2, fut3)` polls `fut1` first for the first time being polled, then it polls 'fut2' for the second time,
+/// then `fut3` will be the first, then it rolls back to `fut1`, and so on. This strategy ensure fairness as it reduces the chance that
+/// heavy futures may make other futures stuck.
+/// If fairness is not your concern, consider using [`join!`], which is less fairer but more efficient.
+///
+/// ```rust
+/// # futures::executor::block_on(async {
+/// use anony::join_cyclic;
+///
+/// let a = async { 1 };
+/// let b = async { 2 };
+/// let c = async { 3 };
+/// assert_eq!(join_cyclic!(a, b, c).await, (1, 2, 3));
+/// # });
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
