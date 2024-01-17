@@ -2,6 +2,7 @@ use tokio::select;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
+// We only demonstrate `join!` and not `join_cyclic!` since they do basically the same. They only differ in polling strategies
 #[tokio::main]
 async fn main() {
     let (tx1, rx1) = mpsc::channel(32);

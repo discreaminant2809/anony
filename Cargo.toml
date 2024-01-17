@@ -29,6 +29,8 @@ default = []
 serde = []
 future = []
 
+# Cache my doc command here 😁
+# RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -53,4 +55,8 @@ required-features = ["serde", "future"]
 
 [[test]]
 name = "join"
+required-features = ["future"]
+
+[[test]]
+name = "join_cyclic"
 required-features = ["future"]
