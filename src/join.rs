@@ -106,27 +106,32 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
     let polling_strategy = if is_cyclic {
         // For `join_cyclic!`, we will use `tokio`'s approach
         // See https://docs.rs/tokio/latest/src/tokio/macros/join.rs.html#57-166
+        // Tokio's code is licensed under the MIT License: https://github.com/tokio-rs/tokio/blob/master/LICENSE
         quote!(
             const COUNT: usize = #fut_count;
             let mut done = true;
             let mut to_run = COUNT;
-            // `skip_next_time` is NOT structurally pinned
-            let mut skip = ::core::mem::replace(
+            let mut to_skip = ::core::mem::replace(
                 skip_next_time,
-                if *skip_next_time + 1 == COUNT { 0 } else { *skip_next_time + 1 }
+                // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
+                // so `clippy::modulo_one` won't be triggered
+                (*skip_next_time + 1) % COUNT
             );
 
             loop {
                 #(
-                    if skip == 0 {
-                        if to_run == 0 {
+                    if to_skip > 0 {
+                        to_skip -= 1;
+                    } else {
+                        // We alter the logic a bit, since we guarantee that `to_run` starts with a number > 1
+                        // because we initialize it with `COUNT`.
+                        // By doing this, we reduce the number of checks
+                        done &= MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx);
+
+                        if to_run <= 1 { // if we are the last one...
                             break;
                         }
                         to_run -= 1;
-
-                        done &= MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx);
-                    } else {
-                        skip -= 1;
                     }
                 )*
             }
@@ -146,9 +151,6 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
     let o_return = o_matching.clone();
 
     let maybe_done_vars_at_take_outputs = maybe_done_vars.clone();
-
-    // let unpin_generics_bounded_at_impl = fut_generics.clone();
-    // let unpin_generics_at_impl = unpin_generics_bounded_at_impl.clone();
 
     let futs_to_maybe_done = (0..exprs.len()).map(|i| {
         let i = syn::Index::from(i);
@@ -176,6 +178,7 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
             impl<F: ::core::future::Future + ::core::marker::Unpin> ::core::marker::Unpin for MaybeDone<F> {}
 
             impl<F: ::core::future::Future> MaybeDone<F> {
+                // This method is only used to poll and check the status of the wrapped future. It isn't for getting the result!
                 fn poll(mut self: ::core::pin::Pin<&mut Self>, cx: &mut ::core::task::Context<'_>) -> bool {
                     // SAFETY: pinning projection
                     match unsafe {
@@ -239,7 +242,7 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                     self: ::core::pin::Pin<&mut Self>,
                     cx: &mut ::core::task::Context<'_>
                 ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                    // SAFETY: pinning projection! All `Maybedone`s are structurally pinned
+                    // SAFETY: pinning projection! All `Maybedone`s are structurally pinned, while `skip_next_time` is NOT
                     let Self::Inner(#(#maybe_done_vars_at_destructuring),*, #skip_next_time_var) = unsafe {
                         ::core::pin::Pin::get_unchecked_mut(self)
                     };

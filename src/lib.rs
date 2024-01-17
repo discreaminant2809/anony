@@ -145,12 +145,22 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// **sequencially** (`fut1` must be done first before awaiting `fut2`, and `fut3`). `join!(fut1, fut2, fut3).await` will poll every futures
 /// on getting polled, which makes them concurrently awaited.
 ///
-/// Unlike other `join`'s implementations, this one returns an instance of an anonymous type implemented [`std::future::Future`]
-/// instead of requiring it to be inside any async contexts. You will be warned if you neither `.await`, `poll`, nor return it.
-///
 /// This future will always poll the first input future first, which is similar to the `futures`'s one.
 /// For example, `join!(fut1, fut2, fut3)` always polls `fut1` first on being polled.
 /// If fairness is your concern, consider using [`join_cyclic!`], which is less efficient but fairer.
+///
+/// # Possible differences from other implementations
+///
+/// `join!`:
+///
+/// * returns an instance of an anonymous type implemented [`std::future::Future`]
+/// instead of requiring it to be inside an `async`. You will be warned if you neither `.await`, [`std::future::Future::poll`], nor return it.
+///
+/// * the returned future (generally) has smaller size
+///
+/// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
+///
+/// # Example
 ///
 /// ```rust
 /// # futures::executor::block_on(async {
@@ -179,14 +189,24 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// **sequencially** (`fut1` must be done first before awaiting `fut2`, and `fut3`). `join!(fut1, fut2, fut3).await` will poll every futures
 /// on getting polled, which makes them concurrently awaited.
 ///
-/// Unlike other `join`'s implementations, this one returns an instance of an anonymous type implemented [`std::future::Future`]
-/// instead of requiring it to be inside any async contexts. You will be warned if you neither `.await`, `poll`, nor return it.
-///
 /// This future will cycle the first future to be polled for each time it is polled, which is similar to the `tokio`'s one.
 /// For example, `join!(fut1, fut2, fut3)` polls `fut1` first for the first time being polled, then it polls 'fut2' for the second time,
 /// then `fut3` will be the first, then it rolls back to `fut1`, and so on. This strategy ensure fairness as it reduces the chance that
 /// heavy futures may make other futures stuck.
 /// If fairness is not your concern, consider using [`join!`], which is less fairer but more efficient.
+///
+/// # Possible differences from other implementations
+///
+/// `join_cyclic!`:
+///
+/// * returns an instance of an anonymous type implemented [`std::future::Future`]
+/// instead of requiring it to be inside an `async`. You will be warned if you neither `.await`, [`std::future::Future::poll`], nor return it.
+///
+/// * the returned future (generally) has smaller size
+///
+/// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
+///
+/// # Example
 ///
 /// ```rust
 /// # futures::executor::block_on(async {
