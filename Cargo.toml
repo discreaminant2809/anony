@@ -1,6 +1,6 @@
 [package]
 name = "anony"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Anonymous struct"
@@ -13,7 +13,7 @@ proc-macro = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-proc-macro2 = "1.0.66"
+proc-macro2 = "1.0.76"
 quote = "1.0.35"
 syn = { version = "2.0.30", features = ["full"] }
 

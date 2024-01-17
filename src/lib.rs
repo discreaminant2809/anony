@@ -15,8 +15,8 @@
 //!     items
 //! };
 //!
-//! // Since all of the fields implement `Debug`, the type of the instance implements it also!
-//! assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
+//! assert_eq!(x.color, "Red");
+//! assert_eq!(x.items, [1, 3, 5]);
 //! ```
 //!
 //! * [`join!`] and [`join_cyclic!`]: join multiple futures. Require `future` feature.
@@ -31,8 +31,12 @@
 //!
 //! ## Features
 //!
-//! * `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate.
-//! * `future`: allows [`std::future::Future`] anonymous types, such as [`join!`].
+//! * `serde`: derives [`Serialize`] for anonymous structs. [serde] crate and its `derive` feature must exist in your crate.
+//! * `future`: enables [`Future`] anonymous types, such as [`join!`].
+//!
+//! [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
+//! [`Future`]: std::future::Future
+//! [serde]: https://docs.rs/serde/latest/serde/index.html
 
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -129,7 +133,9 @@ use proc_macro2 as pm2;
 /// * [`Hash`]
 /// * [`Clone`]
 /// * [`Copy`]
-/// * `Serialize` (require `serde` feature)
+/// * [`Serialize`] (require `serde` feature)
+///
+/// [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
 #[proc_macro]
 pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
     anonymous_struct::imp(token_stream)
@@ -145,16 +151,19 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// **sequencially** (`fut1` must be done first before awaiting `fut2`, and `fut3`). `join!(fut1, fut2, fut3).await` will poll every futures
 /// on getting polled, which makes them concurrently awaited.
 ///
-/// This future will always poll the first input future first, which is similar to the `futures`'s one.
+/// This future will always poll the first input future first, which is similar to the [futures]'s one.
 /// For example, `join!(fut1, fut2, fut3)` always polls `fut1` first on being polled.
 /// If fairness is your concern, consider using [`join_cyclic!`], which is less efficient but fairer.
+///
+/// [futures]: https://docs.rs/futures/latest/futures/macro.join.html
 ///
 /// # Possible differences from other implementations
 ///
 /// `join!`:
 ///
-/// * returns an instance of an anonymous type implemented [`std::future::Future`]
-/// instead of requiring it to be inside an `async`. You will be warned if you neither `.await`, [`std::future::Future::poll`], nor return it.
+/// * returns an instance of an anonymous type implemented [`Future`](std::future::Future)
+/// instead of requiring it to be inside an `async`. You will be warned if you neither
+/// `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
 /// * the returned future (generally) has smaller size
 ///
@@ -189,18 +198,21 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// **sequencially** (`fut1` must be done first before awaiting `fut2`, and `fut3`). `join!(fut1, fut2, fut3).await` will poll every futures
 /// on getting polled, which makes them concurrently awaited.
 ///
-/// This future will cycle the first future to be polled for each time it is polled, which is similar to the `tokio`'s one.
+/// This future will cycle the first future to be polled for each time it is polled, which is similar to the [tokio]'s one.
 /// For example, `join!(fut1, fut2, fut3)` polls `fut1` first for the first time being polled, then it polls 'fut2' for the second time,
 /// then `fut3` will be the first, then it rolls back to `fut1`, and so on. This strategy ensure fairness as it reduces the chance that
 /// heavy futures may make other futures stuck.
 /// If fairness is not your concern, consider using [`join!`], which is less fairer but more efficient.
 ///
+/// [tokio]: https://docs.rs/tokio/latest/tokio/macro.join.html
+///
 /// # Possible differences from other implementations
 ///
 /// `join_cyclic!`:
 ///
-/// * returns an instance of an anonymous type implemented [`std::future::Future`]
-/// instead of requiring it to be inside an `async`. You will be warned if you neither `.await`, [`std::future::Future::poll`], nor return it.
+/// * returns an instance of an anonymous type implemented [`Future`](std::future::Future)
+/// instead of requiring it to be inside an `async`. You will be warned if you neither
+/// `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
 /// * the returned future (generally) has smaller size
 ///

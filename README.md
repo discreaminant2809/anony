@@ -2,7 +2,7 @@
 
 ## Macros
 
-* `struct!`: creates an instance of an anonymous struct.
+* [`struct!`]: creates an instance of an anonymous struct.
 
 ```rust
 use anony::r#struct;
@@ -15,11 +15,11 @@ let x = r#struct! {
     items
 };
 
-// Since all of the fields implement `Debug`, the type of the instance implements it also!
-assert_eq!(format!("{x:?}"), r#" { color: "Red", items: [1, 3, 5] }"#);
+assert_eq!(x.color, "Red");
+assert_eq!(x.items, [1, 3, 5]);
 ```
 
-* `join!` and `join_cyclic!`: join multiple futures. Require `future` feature.
+* [`join!`] and [`join_cyclic!`]: join multiple futures. Require `future` feature.
 
 ```rust
 use anony::join;
@@ -29,8 +29,15 @@ assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 
 ## Features
 
-* `serde`: derives `serde`'s traits for anonymous structs. `serde` crate and its `derive` feature must exist in your crate.
-* `future`: allows `std::future::Future` anonymous types, such as `join!`.
+* `serde`: derives [`Serialize`] for anonymous structs. [serde] crate and its `derive` feature must exist in your crate.
+* `future`: enables [`Future`] anonymous types, such as [`join!`].
+
+[`struct!`]: https://docs.rs/anony/latest/anony/macro.struct.html
+[`join!`]: https://docs.rs/anony/latest/anony/macro.join.html
+[`join_cyclic!`]: https://docs.rs/anony/latest/anony/macro.join_cyclic.html
+[`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
+[`Future`]: https://doc.rust-lang.org/core/future/trait.Future.html
+[serde]: https://docs.rs/serde/latest/serde/index.html
 
 ## Todos
 
