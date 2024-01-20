@@ -50,6 +50,12 @@ use proc_macro2 as pm2;
 
 /// Creates an instance of an anonymous struct.
 ///
+/// **Note**: if two instances are created from two different `r#struct!`s, they will guarantee belong to two differences anonymous structs
+/// even if they have exactly the same set of fields (both names and types). You can clone an instance instead to get the same
+/// fields and type for the cloned instance.
+///
+/// # Examples
+///
 /// Like how an instance of a normal struct is constructed, you can do the same with this macro:
 /// ```
 /// use anony::r#struct;
@@ -131,11 +137,12 @@ use proc_macro2 as pm2;
 /// * All traits in [`std::cmp`]
 /// * [`Debug`]
 /// * [`Hash`]
-/// * [`Clone`]
-/// * [`Copy`]
-/// * [`Serialize`] (require `serde` feature)
+/// * [`Clone`] and [`Copy`] (the cloned instance is guaranteed to have the same type as the source)
+/// * [`Serialize`] (`serde` feature required)
 ///
 /// [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
+/// [`Debug`]: std::fmt::Debug
+/// [`Hash`]: std::hash::Hash
 #[proc_macro]
 pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
     anonymous_struct::imp(token_stream)
@@ -169,7 +176,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// # futures::executor::block_on(async {
@@ -218,7 +225,7 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// # futures::executor::block_on(async {

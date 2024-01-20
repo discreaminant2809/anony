@@ -41,4 +41,5 @@ assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 
 ## Todos
 
-* "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method
+* "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
+* "Prototyping": a way to create a new instance of the same anonymous struct as the source (NOT cloning!).

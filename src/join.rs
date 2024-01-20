@@ -15,11 +15,13 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
     let must_use = quote!(
         #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
     );
-    let (join_ty_at_decl, join_ty_at_impl, join_ty_at_ret) = if is_cyclic {
-        (quote!(JoinCyclic), quote!(JoinCyclic), quote!(JoinCyclic))
+    let join_ty_at_decl = if is_cyclic {
+        quote!(JoinCyclic)
     } else {
-        (quote!(Join), quote!(Join), quote!(Join))
+        quote!(Join)
     };
+    let join_ty_at_impl = join_ty_at_decl.clone();
+    let join_ty_at_ret = join_ty_at_decl.clone();
 
     if exprs.is_empty() {
         return Ok(quote!({
@@ -129,14 +131,12 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                         done &= MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx);
 
                         if to_run <= 1 { // if we are the last one...
-                            break;
+                            break done;
                         }
                         to_run -= 1;
                     }
                 )*
             }
-
-            done
         )
     } else {
         quote!(
@@ -175,6 +175,9 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
             }
 
             // Only the wrapped future is considered, not its output, since the former is structurally pinned, while the latter isn't
+            // We strictly adhere to the invariant regarding structurally pinned fields
+            // If we don't add this, the future's output type is considered also, which shouldn't
+            // since the output is NOT structurally pinned
             impl<F: ::core::future::Future + ::core::marker::Unpin> ::core::marker::Unpin for MaybeDone<F> {}
 
             impl<F: ::core::future::Future> MaybeDone<F> {
