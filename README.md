@@ -27,6 +27,10 @@ use anony::join;
 assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 ```
 
+## Example Macro Expansions
+
+<https://github.com/discreaminant2809/anony/blob/master/examples/expansions.rs>
+
 ## Features
 
 * `serde`: derives [`Serialize`] for anonymous structs. [serde] crate and its `derive` feature must exist in your crate.
@@ -42,4 +46,4 @@ assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 ## Todos
 
 * "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
-* "Prototyping": a way to create a new instance of the same anonymous struct as the source (NOT cloning!).
+* "Typing": a way to create a new instance of the same anonymous struct as the source.

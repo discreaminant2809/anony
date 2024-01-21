@@ -180,15 +180,15 @@ fn unpin_impl() {
 #[test]
 #[ignore = "testing return type of `join_cyclic!`"]
 fn output_type() {
-    fn assert_output_type<F: Future<Output = T>, T>(_x: &F) {}
+    fn assert_output_type<T>(_x: &impl Future<Output = T>) {}
 
-    assert_output_type::<_, (Vec<()>, ())>(&join_cyclic!(
+    assert_output_type::<(Vec<()>, ())>(&join_cyclic!(
         pending::<Vec<()>>(),
         sleep(Duration::default())
     ));
 
-    assert_output_type::<_, ()>(&join_cyclic!());
-    assert_output_type::<_, (i32,)>(&join_cyclic!(async { 2 }));
+    assert_output_type::<()>(&join_cyclic!());
+    assert_output_type::<(i32,)>(&join_cyclic!(async { 2 }));
     // assert_output_type::<_, (i32,)>(&async { tokio::join!(async { 2 }) }); // `tokio`'s one is the same as us
     // assert_output_type::<_, (i32,)>(&async { futures::join!(async { 2 }) }); // the same for `futures`'s
 }

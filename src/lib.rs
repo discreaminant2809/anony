@@ -29,6 +29,10 @@
 //! # });
 //! ```
 //!
+//! ## Example Macro Expansions
+//!
+//! <https://github.com/discreaminant2809/anony/blob/master/examples/expansions.rs>
+//!
 //! ## Features
 //!
 //! * `serde`: derives [`Serialize`] for anonymous structs. [serde] crate and its `derive` feature must exist in your crate.
