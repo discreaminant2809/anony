@@ -1,9 +1,15 @@
+mod threading;
+
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
+    num::NonZeroUsize,
+    sync::{Arc, Mutex},
 };
 
 use anony::r#struct;
+
+use crate::threading::ThreadPool;
 
 fn main() {
     let o1 = r#struct! {
@@ -45,4 +51,26 @@ fn main() {
     let mut hasher = DefaultHasher::new();
     o5.hash(&mut hasher);
     println!("Hash value of o5: {}", hasher.finish());
+
+    // let's use the ThreadPool we've implemented with the assistance of `r#struct!` macro!
+    let mut sum = Arc::new(Mutex::new(0_u32));
+    let mut thread_pool = ThreadPool::new(NonZeroUsize::new(10).unwrap()).unwrap();
+
+    for i in 0..100 {
+        let sum = sum.clone();
+        thread_pool.spawn(move || {
+            const COUNT: usize = 100;
+            let start = i * COUNT;
+            for j in start..start + COUNT {
+                *sum.lock().unwrap() += j as u32;
+            }
+        });
+    }
+
+    thread_pool.shutdown();
+
+    assert_eq!(
+        *Arc::get_mut(&mut sum).unwrap().get_mut().unwrap(),
+        49_995_000
+    );
 }
