@@ -42,7 +42,9 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
 
             #join_ty_at_ret
         }));
-    } else if exprs.len() == 1 {
+    }
+
+    if exprs.len() == 1 {
         let expr = exprs.into_iter().next().unwrap();
         return Ok(quote!({
             let fut = #expr;
@@ -72,7 +74,7 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                     }
                 }
 
-                #join_ty_at_ret::Inner(fut)
+                #join_ty_at_ret::Inner(::core::future::IntoFuture::into_future(fut))
             }
         }));
     }
@@ -265,7 +267,12 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                 }
             }
 
-            #join_ty_at_ret::Inner(#(MaybeDone::Pending(#futs_to_maybe_done)),*, #skip_next_time_init)
+            #join_ty_at_ret::Inner(
+                #(
+                    MaybeDone::Pending(::core::future::IntoFuture::into_future(#futs_to_maybe_done))
+                ),*,
+                #skip_next_time_init
+            )
         }
     }))
 }

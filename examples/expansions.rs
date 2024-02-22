@@ -176,7 +176,7 @@ fn _join_expansion() {
                     .map(|o| (o,))
                 }
             }
-            Join::Inner(fut)
+            Join::Inner(::core::future::IntoFuture::into_future(fut))
         }
     };
 
@@ -318,9 +318,9 @@ fn _join_expansion() {
 
             // Finally...
             Join::Inner(
-                MaybeDone::Pending(futs.0),
-                MaybeDone::Pending(futs.1),
-                MaybeDone::Pending(futs.2),
+                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.0)),
+                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.1)),
+                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.2)),
             )
         }
     };
@@ -379,7 +379,7 @@ fn _join_cyclic_expansion() {
                     .map(|o| (o,))
                 }
             }
-            JoinCyclic::Inner(fut)
+            JoinCyclic::Inner(::core::future::IntoFuture::into_future(fut))
         }
     };
 
@@ -552,9 +552,9 @@ fn _join_cyclic_expansion() {
             }
 
             JoinCyclic::Inner(
-                MaybeDone::Pending(futs.0),
-                MaybeDone::Pending(futs.1),
-                MaybeDone::Pending(futs.2),
+                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.0)),
+                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.1)),
+                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.2)),
                 0,
             )
         }

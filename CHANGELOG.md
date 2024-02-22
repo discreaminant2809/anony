@@ -5,6 +5,12 @@
 - "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
 - "Typing": a way to create a new instance of the same anonymous struct as the source (NOT cloning!).
 
+## 0.4.2
+
+### Changed
+
+- `join` and `join_cyclic!` require `IntoFuture` instead of `Future` for all future arguments
+
 ## 0.4.1
 
 ### Added
