@@ -25,6 +25,7 @@ tokio = { version = "1.35.1", features = ["full"] }
 futures = "0.3.30"
 scopeguard = "1.2.0"
 spmc = "0.3.0"
+criterion = { version = "0.5.1", features = ["async", "async_tokio"] }
 
 [features]
 default = []
@@ -55,4 +56,9 @@ required-features = ["future"]
 
 [[test]]
 name = "join_cyclic"
+required-features = ["future"]
+
+[[bench]]
+name = "join"
+harness = false
 required-features = ["future"]
