@@ -10,6 +10,7 @@
 ### Changed
 
 - `join` and `join_cyclic!` require `IntoFuture` instead of `Future` for all future arguments
+- Optimize `join` and `join_cyclic!`
 
 ## 0.4.1
 

@@ -148,10 +148,6 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
         )
     };
 
-    let o_matching = (0..exprs.len()).map(|i| format_ident!("o{i}"));
-
-    let o_return = o_matching.clone();
-
     let maybe_done_vars_at_take_outputs = maybe_done_vars.clone();
 
     let futs_to_maybe_done = (0..exprs.len()).map(|i| {
@@ -205,16 +201,13 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                     }
                 }
 
-                fn take_output(self: ::core::pin::Pin<&mut Self>) -> ::core::option::Option<<F as ::core::future::Future>::Output> {
+                // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
+                unsafe fn force_take_output(self: ::core::pin::Pin<&mut Self>) -> <F as ::core::future::Future>::Output {
                     // SAFETY: pinning projection
-                    match unsafe {
-                        ::core::pin::Pin::get_unchecked_mut(self)
-                    } {
-                        Self::Pending(_) => {
-                            ::core::option::Option::None
-                        }
-                        // the output is NOT structurally pinned
-                        Self::Ready(o) => ::core::option::Option::take(o)
+                    match ::core::pin::Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => ::core::hint::unreachable_unchecked(),
+                        // SAFETY: the output is NOT structurally pinned
+                        Self::Ready(o) => o.take().unwrap_unchecked(),
                     }
                 }
             }
@@ -259,8 +252,14 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                     }
 
                     unsafe {
-                        match (#(MaybeDone::take_output(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_take_outputs))),* ,) {
-                            (#(::core::option::Option::Some(#o_matching)),* ,) => ::core::task::Poll::Ready((#(#o_return),* ,)),
+                        // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
+                        match maybe_done0 {
+                            MaybeDone::Ready(Some(_)) => ::core::task::Poll::Ready((
+                                // SAFETY: they're at `MaybeDone::Ready(Some)` variant
+                                #(MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_take_outputs))),*
+                            )),
+                            // SAFETY: they have been done. It leads to a more efficient codegen
+                            MaybeDone::Pending(_) => ::core::hint::unreachable_unchecked(),
                             _ => ::core::panic!("`join!` future polled after completion")
                         }
                     }

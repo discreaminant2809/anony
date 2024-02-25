@@ -18,7 +18,10 @@ async fn join_duration() {
         sleep(Duration::from_secs(3)),
         sleep(Duration::from_secs(3)),
         // This's the longest, so the whole future should be ended in (approximately) 4 seconds
-        sleep(Duration::from_secs(4)),
+        async {
+            sleep(Duration::from_secs(2)).await;
+            sleep(Duration::from_secs(2)).await;
+        },
         sleep(Duration::from_secs(1)),
     );
 
@@ -27,7 +30,7 @@ async fn join_duration() {
             // we passed!
         }
 
-        _ = sleep(Duration::from_secs_f64(4.1)) => {
+        _ = sleep(Duration::from_secs_f64(4.2)) => {
             // we failed!
             panic!("too long");
         }

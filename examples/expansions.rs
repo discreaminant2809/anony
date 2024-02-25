@@ -232,14 +232,16 @@ fn _join_expansion() {
                         _ => true,
                     }
                 }
-                fn take_output(
+
+                // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
+                unsafe fn force_take_output(
                     self: ::core::pin::Pin<&mut Self>,
-                ) -> ::core::option::Option<<F as ::core::future::Future>::Output> {
+                ) -> <F as ::core::future::Future>::Output {
                     // SAFETY: pinning projection
-                    match unsafe { ::core::pin::Pin::get_unchecked_mut(self) } {
-                        Self::Pending(_) => ::core::option::Option::None,
-                        // the output is NOT structurally pinned
-                        Self::Ready(o) => ::core::option::Option::take(o),
+                    match ::core::pin::Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => ::core::hint::unreachable_unchecked(),
+                        // SAFETY: the output is NOT structurally pinned
+                        Self::Ready(o) => o.take().unwrap_unchecked(),
                     }
                 }
             }
@@ -300,16 +302,22 @@ fn _join_expansion() {
                     }
 
                     unsafe {
-                        match (
-                            MaybeDone::take_output(::core::pin::Pin::new_unchecked(maybe_done0)),
-                            MaybeDone::take_output(::core::pin::Pin::new_unchecked(maybe_done1)),
-                            MaybeDone::take_output(::core::pin::Pin::new_unchecked(maybe_done2)),
-                        ) {
-                            (
-                                ::core::option::Option::Some(o0),
-                                ::core::option::Option::Some(o1),
-                                ::core::option::Option::Some(o2),
-                            ) => ::core::task::Poll::Ready((o0, o1, o2)),
+                        // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
+                        match maybe_done0 {
+                            MaybeDone::Ready(Some(_)) => ::core::task::Poll::Ready((
+                                // SAFETY: they're at `MaybeDone::Ready(Some)` variant
+                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
+                                    maybe_done0,
+                                )),
+                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
+                                    maybe_done1,
+                                )),
+                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
+                                    maybe_done2,
+                                )),
+                            )),
+                            // SAFETY: they have been done. It leads to a more efficient codegen
+                            MaybeDone::Pending(_) => ::core::hint::unreachable_unchecked(),
                             _ => ::core::panic!("`join!` future polled after completion"),
                         }
                     }
@@ -425,12 +433,16 @@ fn _join_cyclic_expansion() {
                         _ => true,
                     }
                 }
-                fn take_output(
+
+                // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
+                unsafe fn force_take_output(
                     self: ::core::pin::Pin<&mut Self>,
-                ) -> ::core::option::Option<<F as ::core::future::Future>::Output> {
-                    match unsafe { ::core::pin::Pin::get_unchecked_mut(self) } {
-                        Self::Pending(_) => ::core::option::Option::None,
-                        Self::Ready(o) => ::core::option::Option::take(o),
+                ) -> <F as ::core::future::Future>::Output {
+                    // SAFETY: pinning projection
+                    match ::core::pin::Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => ::core::hint::unreachable_unchecked(),
+                        // SAFETY: the output is NOT structurally pinned
+                        Self::Ready(o) => o.take().unwrap_unchecked(),
                     }
                 }
             }
@@ -535,16 +547,22 @@ fn _join_cyclic_expansion() {
                     }
 
                     unsafe {
-                        match (
-                            MaybeDone::take_output(::core::pin::Pin::new_unchecked(maybe_done0)),
-                            MaybeDone::take_output(::core::pin::Pin::new_unchecked(maybe_done1)),
-                            MaybeDone::take_output(::core::pin::Pin::new_unchecked(maybe_done2)),
-                        ) {
-                            (
-                                ::core::option::Option::Some(o0),
-                                ::core::option::Option::Some(o1),
-                                ::core::option::Option::Some(o2),
-                            ) => ::core::task::Poll::Ready((o0, o1, o2)),
+                        // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
+                        match maybe_done0 {
+                            MaybeDone::Ready(Some(_)) => ::core::task::Poll::Ready((
+                                // SAFETY: they're at `MaybeDone::Ready(Some)` variant
+                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
+                                    maybe_done0,
+                                )),
+                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
+                                    maybe_done1,
+                                )),
+                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
+                                    maybe_done2,
+                                )),
+                            )),
+                            // SAFETY: they have been done. It leads to a more efficient codegen
+                            MaybeDone::Pending(_) => ::core::hint::unreachable_unchecked(),
                             _ => ::core::panic!("`join!` future polled after completion"),
                         }
                     }
