@@ -4,8 +4,17 @@
 
 - "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
 - "Typing": a way to create a new instance of the same anonymous struct as the source (NOT cloning!).
+
+## 0.5.0
+
+### Added
+
 - `try_join` and `try_join_cyclic!`
 - `tuple!`
+
+### Removed
+
+- `Todos` in `README.md`
 
 ## 0.4.2
 

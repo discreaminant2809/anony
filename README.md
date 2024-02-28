@@ -42,8 +42,3 @@ assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
 [`Future`]: https://doc.rust-lang.org/core/future/trait.Future.html
 [serde]: https://docs.rs/serde/latest/serde/index.html
-
-## Todos
-
-* "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
-* "Typing": a way to create a new instance of the same anonymous struct as the source.
