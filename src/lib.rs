@@ -250,7 +250,74 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-#[allow(missing_docs)]
+/// Returns a future that "joins" multiple futures that will be completed concurrently
+///
+/// It is similar to [`join!`], except it resolves to "continue" value if all the futures resolve to "continue" value,
+/// and resolves to "break" value if one of the futures resolves to "break" value. The "continue" and the "break" value
+/// are dependent on the output type of all the futures
+///
+/// Here's a basic overview of possible return types and return values:
+///
+/// | `(F0::Output, F1::Output, ...)` | `TryJoin::Output` | "Cnntinue" value | "Break" value | Note
+/// |-----------|-------------|-|-|-|
+/// | `(Option<T0>, Option<T1>, ...)`  | `Option<(T0, T1, ...)>` | `Some` | `None` |
+/// | `(Result<T0, E>, Result<T1, E>, ...)`  | `Result<(T0, T1, ...), E>` | `Ok` | `Err` | All errors must exactly be the same |
+/// | `(ControlFlow<B, C0>, ControlFlow<B, C1>, ...)`  | `ControlFlow<B, (C0, C1, ...)>` | `Continue` | `Break` |
+///
+/// Formally, the trait bound is as the following, in term of [`Try`](std::ops::Try) and [`Residual`](std::ops::Residual) traits:
+/// ```ignore
+/// impl<
+///         F0: Future,
+///         F1: Future,
+///         ...
+///         FN: Future,
+///         R: Residual<(
+///             <F0::Output as Try>::Output,
+///             <F1::Output as Try>::Output,
+///             ...
+///             <FN::Output as Try>::Output,
+///         )>,
+///     > Future for TryJoin<F0, F1, ..., FN, R>
+/// where
+///     F0::Output: Try<Residual = R>,
+///     F1::Output: Try<Residual = R>,
+///     ...
+///     FN::Output: Try<Residual = R>,
+/// {
+///     type Output = R::TryType;
+/// }
+/// ```
+///
+/// It means that in theory, you can use `Poll<Result<T, E>>` and `Poll<Option<Result<T, E>>>` and mix up
+/// with other futures returning `Result<T, E>`! However, to prevent such mess, the two types are NOT allowed
+/// as of now. It may be lifted later when many unstable `try_*` methods/functions are stabilized.
+///
+/// If the standard library add more types implementing [`Try`](std::ops::Try) or [`Residual`](std::ops::Residual),
+/// this macro will NOT be aware of it. You can only be waiting till this crate is updated, or both traits are stabilized.
+///
+/// # DISCLAIMER
+/// This macro does NOT use nightly or beta channel. It is usable on stable release.
+///
+/// # Examples
+/// ```
+/// # futures::executor::block_on(async {
+/// use anony::try_join;
+///
+/// let a = async { Some(1) };
+/// let b = async { Some(2) };
+/// let c = async { Some(3) };
+/// assert_eq!(try_join!(a, b, c).await, Some((1, 2, 3)));
+///
+/// let a = async { Ok(4) };
+/// let b = async { Err::<(), _>("5") };
+/// assert_eq!(try_join!(a, b).await, Err("5"));
+///
+/// let a = async { Some("6") };
+/// let b = async { None::<&str> };
+/// let c = async { Some("7") };
+/// assert_eq!(try_join!(a, b, c).await, None);
+/// # });
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
@@ -260,7 +327,74 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-#[allow(missing_docs)]
+/// Returns a future that "joins" multiple futures that will be completed concurrently
+///
+/// It is similar to [`join_cyclic!`], except it resolves to "continue" value if all the futures resolve to "continue" value,
+/// and resolves to "break" value if one of the futures resolves to "break" value. The "continue" and the "break" value
+/// are dependent on the output type of all the futures
+///
+/// Here's a basic overview of possible return types and return values:
+///
+/// | `(F0::Output, F1::Output, ...)` | `TryJoinCyclic::Output` | "Cnntinue" value | "Break" value | Note
+/// |-----------|-------------|-|-|-|
+/// | `(Option<T0>, Option<T1>, ...)`  | `Option<(T0, T1, ...)>` | `Some` | `None` |
+/// | `(Result<T0, E>, Result<T1, E>, ...)`  | `Result<(T0, T1, ...), E>` | `Ok` | `Err` | All errors must exactly be the same |
+/// | `(ControlFlow<B, C0>, ControlFlow<B, C1>, ...)`  | `ControlFlow<B, (C0, C1, ...)>` | `Continue` | `Break` |
+///
+/// Formally, the trait bound is as the following, in term of [`Try`](std::ops::Try) and [`Residual`](std::ops::Residual) traits:
+/// ```ignore
+/// impl<
+///         F0: Future,
+///         F1: Future,
+///         ...
+///         FN: Future,
+///         R: Residual<(
+///             <F0::Output as Try>::Output,
+///             <F1::Output as Try>::Output,
+///             ...
+///             <FN::Output as Try>::Output,
+///         )>,
+///     > Future for TryJoinCyclic<F0, F1, ..., FN, R>
+/// where
+///     F0::Output: Try<Residual = R>,
+///     F1::Output: Try<Residual = R>,
+///     ...
+///     FN::Output: Try<Residual = R>,
+/// {
+///     type Output = R::TryType;
+/// }
+/// ```
+///
+/// It means that in theory, you can use `Poll<Result<T, E>>` and `Poll<Option<Result<T, E>>>` and mix up
+/// with other futures returning `Result<T, E>`! However, to prevent such mess, the two types are NOT allowed
+/// as of now. It may be lifted later when many unstable `try_*` methods/functions are stabilized.
+///
+/// If the standard library add more types implementing [`Try`](std::ops::Try) or [`Residual`](std::ops::Residual),
+/// this macro will NOT be aware of it. You can only be waiting till this crate is updated, or both traits are stabilized.
+///
+/// # DISCLAIMER
+/// This macro does NOT use nightly or beta channel. It is usable on stable release.
+///
+/// # Examples
+/// ```
+/// # futures::executor::block_on(async {
+/// use anony::try_join_cyclic;
+///
+/// let a = async { Some(1) };
+/// let b = async { Some(2) };
+/// let c = async { Some(3) };
+/// assert_eq!(try_join_cyclic!(a, b, c).await, Some((1, 2, 3)));
+///
+/// let a = async { Ok(4) };
+/// let b = async { Err::<(), _>("5") };
+/// assert_eq!(try_join_cyclic!(a, b).await, Err("5"));
+///
+/// let a = async { Some("6") };
+/// let b = async { None::<&str> };
+/// let c = async { Some("7") };
+/// assert_eq!(try_join_cyclic!(a, b, c).await, None);
+/// # });
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
