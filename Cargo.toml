@@ -58,6 +58,10 @@ required-features = ["future"]
 name = "join_cyclic"
 required-features = ["future"]
 
+[[test]]
+name = "try_join"
+required-features = ["future"]
+
 [[bench]]
 name = "join"
 harness = false
