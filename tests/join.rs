@@ -1,6 +1,6 @@
 use std::{
     cell::Cell,
-    future::{pending, Future},
+    future::{pending, Future, IntoFuture},
     marker::PhantomPinned,
     pin::{pin, Pin},
     rc::Rc,
@@ -9,8 +9,39 @@ use std::{
 };
 
 use anony::join;
+use futures::task::noop_waker_ref;
 use noop_waker::noop_waker;
 use tokio::{select, spawn, task::spawn_blocking, time::sleep};
+
+async fn assert_sleep_correct_dur(
+    fut: impl IntoFuture,
+    desired_dur_secs_f64: f64,
+    delta_secs_f64: f64,
+) {
+    let test_fut_is_later = Cell::new(false);
+
+    let lower_bound_sleeper = async {
+        sleep(Duration::from_secs_f64(
+            desired_dur_secs_f64 - delta_secs_f64,
+        ))
+        .await;
+        test_fut_is_later.set(true);
+    };
+
+    let in_bound_sleeper = async {
+        fut.await;
+        assert!(test_fut_is_later.get(), "too early");
+    };
+
+    select! {
+        _ = async { futures::join!(lower_bound_sleeper, in_bound_sleeper) } => {}
+
+        _ = sleep(Duration::from_secs_f64(desired_dur_secs_f64 + delta_secs_f64)) => {
+            // we failed!
+            panic!("too late");
+        }
+    }
+}
 
 #[tokio::test]
 async fn join_duration() {
@@ -25,16 +56,7 @@ async fn join_duration() {
         sleep(Duration::from_secs(1)),
     );
 
-    select! {
-        _ = fut => {
-            // we passed!
-        }
-
-        _ = sleep(Duration::from_secs_f64(4.2)) => {
-            // we failed!
-            panic!("too long");
-        }
-    }
+    assert_sleep_correct_dur(fut, 4.0, 0.1).await;
 }
 
 #[tokio::test]
@@ -149,6 +171,17 @@ fn should_poll_all_and_in_correct_ord() {
 }
 
 #[test]
+#[should_panic = "`join!` future polled after completion"]
+fn panic_correct_msg() {
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let fut = join!(async {}, async {});
+    let mut fut = pin!(fut);
+
+    let _ = fut.as_mut().poll(&mut cx);
+    let _ = fut.poll(&mut cx); // panic here
+}
+
+#[test]
 #[ignore = "testing trait implementation"]
 fn unpin_impl() {
     use std::future::{pending, ready};
@@ -172,4 +205,15 @@ fn output_type() {
     assert_output_type::<(i32,)>(&join!(async { 2 }));
     // assert_output_type::<_, (i32,)>(&async { tokio::join!(async { 2 }) }); // `tokio`'s one is the same as us
     // assert_output_type::<_, (i32,)>(&async { futures::join!(async { 2 }) }); // the same for `futures`'s
+}
+
+#[test]
+#[ignore = "testing `IntoFuture` acceptance"]
+#[allow(unused_must_use)]
+fn into_future_acceptance() {
+    fn _f(into_fut: impl std::future::IntoFuture + Copy) {
+        join!(into_fut);
+        join!(into_fut, into_fut);
+        join!(into_fut, into_fut, into_fut);
+    }
 }

@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use futures::FutureExt;
+use futures::{task::noop_waker_ref, FutureExt};
 use noop_waker::noop_waker;
 use tokio::{select, time::sleep};
 
@@ -319,6 +319,17 @@ fn should_poll_all_and_in_correct_ord() {
 }
 
 #[test]
+#[should_panic = "`try_join!` future polled after completion"]
+fn panic_correct_msg() {
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let fut = anony::try_join!(async { Some(()) }, async { Some(()) });
+    let mut fut = pin!(fut);
+
+    let _ = fut.as_mut().poll(&mut cx);
+    let _ = fut.poll(&mut cx); // panic here
+}
+
+#[test]
 #[ignore = "testing trait implementation"]
 fn unpin_impl() {
     use std::future::{pending, ready};
@@ -349,4 +360,15 @@ fn output_type() {
     // assert_output_type::<Result<(i32,), String>>(&async { tokio::try_join!(async { Ok(2) }) }); // `tokio`'s one is the same as us
     // assert_output_type::<Result<(i32,), String>>(&async { futures::try_join!(async { Ok(2) }) });
     // // the same for `futures`'s
+}
+
+#[test]
+#[ignore = "testing `IntoFuture` acceptance"]
+#[allow(unused_must_use)]
+fn into_future_acceptance() {
+    fn _f(into_fut: impl std::future::IntoFuture<Output = Option<()>> + Copy) {
+        anony::try_join!(into_fut);
+        anony::try_join!(into_fut, into_fut);
+        anony::try_join!(into_fut, into_fut, into_fut);
+    }
 }
