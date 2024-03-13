@@ -21,22 +21,25 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
         quote!(Join)
     };
     let join_ty_at_impl = join_ty_at_decl.clone();
-    let join_ty_at_ret = join_ty_at_decl.clone();
+    let join_ty_at_ret: pm2::TokenStream = join_ty_at_decl.clone();
+    let neccessary_import = neccessary_import();
 
     if exprs.is_empty() {
         return Ok(quote!({
+            #neccessary_import
+
             #must_use
             struct #join_ty_at_decl;
 
-            impl ::core::future::Future for #join_ty_at_impl {
+            impl Future for #join_ty_at_impl {
                 type Output = ();
 
                 #[inline]
                 fn poll(
-                    self: ::core::pin::Pin<&mut Self>,
-                    _cx: &mut ::core::task::Context<'_>
-                ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                    ::core::task::Poll::Ready(())
+                    self: Pin<&mut Self>,
+                    _cx: &mut Context<'_>
+                ) -> Poll<<Self as Future>::Output> {
+                    Poll::Ready(())
                 }
             }
 
@@ -50,23 +53,25 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
             let fut = #expr;
 
             {
+                #neccessary_import
+
                 #must_use
                 #[repr(transparent)]
-                enum #join_ty_at_decl<F> {
+                enum #join_ty_at_decl<F: Future> {
                     Inner(F)
                 }
 
-                impl<F: ::core::future::Future> ::core::future::Future for #join_ty_at_impl<F> {
-                    type Output = (<F as ::core::future::Future>::Output,);
+                impl<F: Future> Future for #join_ty_at_impl<F> {
+                    type Output = (<F as Future>::Output,);
 
                     #[inline]
                     fn poll(
-                        self: ::core::pin::Pin<&mut Self>,
-                        cx: &mut ::core::task::Context<'_>
-                    ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
+                        self: Pin<&mut Self>,
+                        cx: &mut Context<'_>
+                    ) -> Poll<<Self as Future>::Output> {
                         // SAFETY: pinning projection. The wrapped future is structurally pinned
-                        ::core::future::Future::poll(unsafe {
-                            self.map_unchecked_mut(|this| {
+                        Future::poll(unsafe {
+                            Pin::map_unchecked_mut(self, |this| {
                                 let Self::Inner(fut) = this;
                                 fut
                             })
@@ -74,7 +79,8 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                     }
                 }
 
-                #join_ty_at_ret::Inner(::core::future::IntoFuture::into_future(fut))
+                use ::core::future::IntoFuture;
+                #join_ty_at_ret::Inner(IntoFuture::into_future(fut))
             }
         }));
     }
@@ -85,21 +91,19 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
 
     let fut_generics = (0..exprs.len()).map(|i| format_ident!("F{i}"));
 
-    let fut_generics_at_impl = fut_generics.clone();
+    let fut_generics_at_impl_ty = fut_generics.clone();
 
     let fut_generics_bounded_at_decl = fut_generics.clone();
 
-    let fut_generics_bounded_at_impl = fut_generics_bounded_at_decl.clone();
+    let bounded_generics_at_decl = quote!(
+        <#(#fut_generics_bounded_at_decl: Future),*>
+    );
+    let bounded_generics_at_impl = bounded_generics_at_decl.clone();
 
     let fut_generics_at_maybe_done = fut_generics.clone();
-
     let outputs = fut_generics.clone();
-
     let maybe_done_vars = (0..exprs.len()).map(|i| format_ident!("maybe_done{i}"));
-
     let maybe_done_vars_at_destructuring = maybe_done_vars.clone();
-
-    let maybe_done_vars_at_polling = maybe_done_vars.clone();
 
     let (skip_next_time_ty, skip_next_time_var, skip_next_time_init) = if is_cyclic {
         (quote!(usize), quote!(skip_next_time), quote!(0))
@@ -107,44 +111,16 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
         (quote!(), quote!(), quote!())
     };
 
+    let do_sth_w_done = maybe_done_vars
+        .clone()
+        .map(|maybe_done_var| quote!(done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_var), cx);));
     let polling_strategy = if is_cyclic {
-        // For `join_cyclic!`, we will use `tokio`'s approach
-        // See https://docs.rs/tokio/latest/src/tokio/macros/join.rs.html#57-166
-        // Tokio's code is licensed under the MIT License: https://github.com/tokio-rs/tokio/blob/master/LICENSE
-        quote!(
-            const COUNT: usize = #fut_count;
-            let mut done = true;
-            let mut to_run = COUNT;
-            let mut to_skip = ::core::mem::replace(
-                skip_next_time,
-                // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
-                // so `clippy::modulo_one` won't be triggered
-                (*skip_next_time + 1) % COUNT
-            );
-
-            loop {
-                #(
-                    if to_skip > 0 {
-                        to_skip -= 1;
-                    } else {
-                        // We alter the logic a bit, since we guarantee that `to_run` starts with a number > 1
-                        // because we initialize it with `COUNT`.
-                        // By doing this, we reduce the number of checks
-                        done &= MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx);
-
-                        if to_run <= 1 { // if we are the last one...
-                            break done;
-                        }
-                        to_run -= 1;
-                    }
-                )*
-            }
-        )
+        cyclical_poll(fut_count, do_sth_w_done)
     } else {
         quote!(
-            #(
-                MaybeDone::poll(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_polling), cx)
-            )&* // only use a single ampersand here, since we must poll all of these futures and not short-circuit any
+            let mut done = true;
+            #(#do_sth_w_done)*
+            done
         )
     };
 
@@ -155,43 +131,77 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
         quote!(futs.#i)
     });
 
+    let maybe_done_force_take_output = maybe_done_force_take_output(quote!(<F as Future>::Output));
+
+    let take_output = take_output(
+        if is_cyclic { "join_cyclic" } else { "join" },
+        maybe_done_vars_at_take_outputs,
+        quote!(),
+    );
+
+    let future_impl = future_impl(
+        bounded_generics_at_impl,
+        quote!(#join_ty_at_impl<#(#fut_generics_at_impl_ty),*>),
+        quote!((#(<#outputs as Future>::Output),* ,)),
+        quote!(),
+        quote!(
+            // SAFETY: pinning projection! All `Maybedone`s are structurally pinned, while `skip_next_time` is NOT
+            let Self::Inner(#(#maybe_done_vars_at_destructuring),*, #skip_next_time_var) = unsafe {
+                Pin::get_unchecked_mut(self)
+            };
+
+            if !unsafe {
+                #polling_strategy
+            } {
+                return Poll::Pending;
+            }
+
+            #take_output
+        ),
+    );
+
     Ok(quote!({
         // futures in the macro input
         let futs = (#(#captured_futs_input),* ,);
 
         // Open another scope so that the futures in the input can't access anything within it
         {
+            #neccessary_import
+            use ::core::option::Option::{self, Some, None}; // the `neccessary_import` hasn't imported this
+            use ::core::hint::unreachable_unchecked;
+
             // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
             // #[pin_project]
-            enum MaybeDone<F: ::core::future::Future> {
+            enum MaybeDone<F: Future> {
                 Pending(
                     // #[pin]
                     F
                 ),
                 // It might seem inefficient... but the compiler can optimize the layout
-                Ready(::core::option::Option<<F as ::core::future::Future>::Output>),
+                Ready(Option<<F as Future>::Output>),
             }
 
             // Only the wrapped future is considered, not its output, since the former is structurally pinned, while the latter isn't
             // We strictly adhere to the invariant regarding structurally pinned fields
             // If we don't add this, the future's output type is considered also, which shouldn't
             // since the output is NOT structurally pinned
-            impl<F: ::core::future::Future + ::core::marker::Unpin> ::core::marker::Unpin for MaybeDone<F> {}
+            use ::core::marker::Unpin;
+            impl<F: Future + Unpin> Unpin for MaybeDone<F> {}
 
-            impl<F: ::core::future::Future> MaybeDone<F> {
+            impl<F: Future> MaybeDone<F> {
                 // This method is only used to poll and check the status of the wrapped future. It isn't for getting the result!
-                fn poll(mut self: ::core::pin::Pin<&mut Self>, cx: &mut ::core::task::Context<'_>) -> bool {
+                fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> bool {
                     // SAFETY: pinning projection
                     match unsafe {
-                        ::core::pin::Pin::get_unchecked_mut(::core::pin::Pin::as_mut(&mut self))
+                        Pin::get_unchecked_mut(Pin::as_mut(&mut self))
                     } {
                         Self::Pending(fut) => {
                             // SAFETY: pinning projection. `fut` is structurally pinned
-                            match ::core::future::Future::poll(unsafe {
-                                ::core::pin::Pin::new_unchecked(fut)
+                            match Future::poll(unsafe {
+                                Pin::new_unchecked(fut)
                             }, cx) {
-                                ::core::task::Poll::Ready(o) => {
-                                    ::core::pin::Pin::set(&mut self, Self::Ready(::core::option::Option::Some(o)));
+                                Poll::Ready(o) => {
+                                    Pin::set(&mut self, Self::Ready(Some(o)));
                                     true
                                 }
                                 _ => false
@@ -201,20 +211,12 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                     }
                 }
 
-                // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
-                unsafe fn force_take_output(self: ::core::pin::Pin<&mut Self>) -> <F as ::core::future::Future>::Output {
-                    // SAFETY: pinning projection
-                    match ::core::pin::Pin::get_unchecked_mut(self) {
-                        Self::Pending(_) => ::core::hint::unreachable_unchecked(),
-                        // SAFETY: the output is NOT structurally pinned
-                        Self::Ready(o) => o.take().unwrap_unchecked(),
-                    }
-                }
+                #maybe_done_force_take_output
             }
 
             #must_use
             // #[pin_project]
-            enum #join_ty_at_decl<#(#fut_generics_bounded_at_decl: ::core::future::Future),*> {
+            enum #join_ty_at_decl #bounded_generics_at_decl {
                 // We encapsulate fields using enum variant!
                 // To access these fields, we must pattern matching with this variant, which requires us to write `Join::Inner`...
                 // wait... we can't even specify the struct's name to begin with!
@@ -230,45 +232,12 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
                 )
             }
 
-            impl<#(#fut_generics_bounded_at_impl: ::core::future::Future),*> ::core::future::Future for #join_ty_at_impl<#(#fut_generics_at_impl),*> {
-                // we include the additional comma in the end
-                // previously we should return an 1-ary tuple on having just 1 future to join so that it consistently with 1-ary tuple's construct.
-                // However, it is not neccessary anymore! We generate a different implementation for 1-ary `join!``
-                type Output = (#(<#outputs as ::core::future::Future>::Output),* ,);
+            #future_impl
 
-                fn poll(
-                    self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>
-                ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                    // SAFETY: pinning projection! All `Maybedone`s are structurally pinned, while `skip_next_time` is NOT
-                    let Self::Inner(#(#maybe_done_vars_at_destructuring),*, #skip_next_time_var) = unsafe {
-                        ::core::pin::Pin::get_unchecked_mut(self)
-                    };
-
-                    if !unsafe {
-                        #polling_strategy
-                    } {
-                        return ::core::task::Poll::Pending;
-                    }
-
-                    unsafe {
-                        // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
-                        match maybe_done0 {
-                            MaybeDone::Ready(Some(_)) => ::core::task::Poll::Ready((
-                                // SAFETY: they're at `MaybeDone::Ready(Some)` variant
-                                #(MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(#maybe_done_vars_at_take_outputs))),*
-                            )),
-                            // SAFETY: they have been done. It leads to a more efficient codegen
-                            MaybeDone::Pending(_) => ::core::hint::unreachable_unchecked(),
-                            _ => ::core::panic!("`join!` future polled after completion")
-                        }
-                    }
-                }
-            }
-
+            use ::core::future::IntoFuture;
             #join_ty_at_ret::Inner(
                 #(
-                    MaybeDone::Pending(::core::future::IntoFuture::into_future(#futs_to_maybe_done))
+                    MaybeDone::Pending(IntoFuture::into_future(#futs_to_maybe_done))
                 ),*,
                 #skip_next_time_init
             )
