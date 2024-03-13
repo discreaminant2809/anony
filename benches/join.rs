@@ -1,15 +1,40 @@
-use std::{hint::black_box, time::Duration};
+use std::{array, future::poll_fn, hint::black_box, task::Poll};
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use futures_concurrency::future::Join;
 use tokio::runtime::Runtime;
 
-// Result (runtime): anony::join < futures::join < anony::join_cyclic < tokio::join
-pub fn bench_join_no_sleep(c: &mut Criterion) {
+pub fn bench_join_no_ret(c: &mut Criterion) {
     let mut group = c.benchmark_group("join");
 
     async fn unstable_future(n: usize) {
         for _ in 0..n {
+            // I used 2 versions of `yield_now`, and both yield different results
+
+            // Result for this one (from best to worst):
+            // - anony::join
+            // - futures::join
+            // - anony::join_cyclic
+            // - tokio::join
+            // - futures_concurrency::future::Join::join
             tokio::task::yield_now().await;
+
+            // Result for the 2nd (from best to worst):
+            // - anony::join (sub 1μs!)
+            // - anony::join_cyclic
+            // - tokio::join
+            // - futures::join
+            // - futures_concurrency::future::Join::join
+            // let mut ready = false;
+            // poll_fn(|cx| {
+            //     if std::mem::replace(&mut ready, true) {
+            //         Poll::Ready(())
+            //     } else {
+            //         cx.waker().wake_by_ref();
+            //         Poll::Pending
+            //     }
+            // })
+            // .await
         }
     }
 
@@ -59,18 +84,59 @@ pub fn bench_join_no_sleep(c: &mut Criterion) {
             ))
         });
     });
+    group.bench_function("futures_concurrency::future::Join::join", |b| {
+        let mut b = b.to_async(Runtime::new().unwrap());
+        b.iter(|| async {
+            black_box(
+                (
+                    black_box(unstable_future(20)),
+                    black_box(unstable_future(50)),
+                    black_box(unstable_future(30)),
+                )
+                    .join()
+                    .await,
+            )
+        });
+    });
 
     group.finish();
 }
 
-// Result: there is no significant differences
-pub fn bench_join_sleep(c: &mut Criterion) {
+pub fn bench_join_ret(c: &mut Criterion) {
     let mut group = c.benchmark_group("join");
 
-    async fn sleepy_future(n: usize) {
-        for dur in (0..n).map(|i| Duration::from_millis((50 + i) as _)) {
-            tokio::time::sleep(dur).await;
+    #[inline(never)]
+    async fn unstable_future(n: usize) -> [usize; 10_000] {
+        for _ in 0..n {
+            // I used 2 versions of `yield_now`, and both yield different results
+
+            // Result for this one (from best to worst):
+            // - tokio::join
+            // - anony::join_cyclic
+            // - futures::join
+            // - anony::join
+            // - futures_concurrency::future::Join::join
+            // tokio::task::yield_now().await;
+
+            // Result for the 2nd (from best to worst):
+            // - tokio::join
+            // - anony::join_cyclic
+            // - futures::join
+            // - anony::join
+            // - futures_concurrency::future::Join::join
+            let mut ready = false;
+            poll_fn(|cx| {
+                if std::mem::replace(&mut ready, true) {
+                    Poll::Ready(())
+                } else {
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+            })
+            .await
         }
+
+        array::from_fn(|i| i)
     }
 
     group.bench_function("anony::join", |b| {
@@ -78,9 +144,9 @@ pub fn bench_join_sleep(c: &mut Criterion) {
         b.iter(|| async {
             black_box(
                 anony::join!(
-                    black_box(sleepy_future(1)),
-                    black_box(sleepy_future(3)),
-                    black_box(sleepy_future(2)),
+                    black_box(unstable_future(30)),
+                    black_box(unstable_future(30)),
+                    black_box(unstable_future(30)),
                 )
                 .await,
             )
@@ -91,9 +157,9 @@ pub fn bench_join_sleep(c: &mut Criterion) {
         b.iter(|| async {
             black_box(
                 anony::join_cyclic!(
-                    black_box(sleepy_future(1)),
-                    black_box(sleepy_future(3)),
-                    black_box(sleepy_future(2)),
+                    black_box(unstable_future(30)),
+                    black_box(unstable_future(30)),
+                    black_box(unstable_future(30)),
                 )
                 .await,
             )
@@ -103,9 +169,9 @@ pub fn bench_join_sleep(c: &mut Criterion) {
         let mut b = b.to_async(Runtime::new().unwrap());
         b.iter(|| async {
             black_box(futures::join!(
-                black_box(sleepy_future(1)),
-                black_box(sleepy_future(3)),
-                black_box(sleepy_future(2)),
+                black_box(unstable_future(30)),
+                black_box(unstable_future(30)),
+                black_box(unstable_future(30)),
             ))
         });
     });
@@ -113,15 +179,29 @@ pub fn bench_join_sleep(c: &mut Criterion) {
         let mut b = b.to_async(Runtime::new().unwrap());
         b.iter(|| async {
             black_box(tokio::join!(
-                black_box(sleepy_future(1)),
-                black_box(sleepy_future(3)),
-                black_box(sleepy_future(2)),
+                black_box(unstable_future(30)),
+                black_box(unstable_future(30)),
+                black_box(unstable_future(30)),
             ))
+        });
+    });
+    group.bench_function("futures_concurrency::future::Join::join", |b| {
+        let mut b = b.to_async(Runtime::new().unwrap());
+        b.iter(|| async {
+            black_box(
+                (
+                    black_box(unstable_future(30)),
+                    black_box(unstable_future(30)),
+                    black_box(unstable_future(30)),
+                )
+                    .join()
+                    .await,
+            )
         });
     });
 
     group.finish();
 }
 
-criterion_group!(benches, bench_join_no_sleep, bench_join_sleep);
+criterion_group!(benches, bench_join_no_ret, bench_join_ret);
 criterion_main!(benches);

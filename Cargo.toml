@@ -26,6 +26,7 @@ futures = "0.3.30"
 scopeguard = "1.2.0"
 spmc = "0.3.0"
 criterion = { version = "0.5.1", features = ["async", "async_tokio"] }
+futures-concurrency = "7.5.0"
 
 [features]
 default = []
@@ -64,5 +65,10 @@ required-features = ["future"]
 
 [[bench]]
 name = "join"
+harness = false
+required-features = ["future"]
+
+[[bench]]
+name = "try_join"
 harness = false
 required-features = ["future"]
