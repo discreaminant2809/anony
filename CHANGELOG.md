@@ -16,6 +16,12 @@
 
 - `Todos` in `README.md`
 
+### Fixed
+
+- join_cyclic! now correctly panics with "\`join_cyclic!\` future polled after completion"
+- use `Pin::map_unchecked_mut` instead of `.map_unchecked_mut`
+- Other minor fixes
+
 ## 0.4.2
 
 ### Changed

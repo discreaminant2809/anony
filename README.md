@@ -27,6 +27,15 @@ use anony::join;
 assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 ```
 
+* [`try_join!`] and [`try_join_cyclic!`]: join multiple futures and short-circuit on "break" value. Require `future` feature.
+
+```rust
+use anony::try_join;
+
+assert_eq!(try_join!(async { Some(2) }, async { Some("123") }).await, Some((2, "123")));
+assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
+```
+
 ## Example Macro Expansions
 
 <https://github.com/discreaminant2809/anony/blob/master/examples/expansions.rs>
@@ -39,6 +48,8 @@ assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
 [`struct!`]: https://docs.rs/anony/latest/anony/macro.struct.html
 [`join!`]: https://docs.rs/anony/latest/anony/macro.join.html
 [`join_cyclic!`]: https://docs.rs/anony/latest/anony/macro.join_cyclic.html
+[`try_join!`]: https://docs.rs/anony/latest/anony/macro.try_join.html
+[`try_join_cyclic!`]: https://docs.rs/anony/latest/anony/macro.try_join_cyclic.html
 [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
 [`Future`]: https://doc.rust-lang.org/core/future/trait.Future.html
 [serde]: https://docs.rs/serde/latest/serde/index.html

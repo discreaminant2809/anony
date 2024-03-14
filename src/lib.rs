@@ -29,6 +29,17 @@
 //! # });
 //! ```
 //!
+//! * [`try_join!`] and [`try_join_cyclic!`]: join multiple futures and short-circuit on "break" value. Require `future` feature.
+//!
+//! ```rust
+//! # futures::executor::block_on(async {
+//! use anony::try_join;
+//!
+//! assert_eq!(try_join!(async { Some(2) }, async { Some("123") }).await, Some((2, "123")));
+//! assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
+//! # });
+//! ```
+//!
 //! ## Example Macro Expansions
 //!
 //! <https://github.com/discreaminant2809/anony/blob/master/examples/expansions.rs>
@@ -170,13 +181,13 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Possible differences from other implementations
 ///
-/// `join!`:
-///
-/// * returns an instance of an anonymous type implemented [`Future`](std::future::Future)
+/// * `join!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
 /// instead of requiring it to be inside an `async`. You will be warned if you neither
 /// `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * the returned future (generally) has smaller size
+/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture).
+///
+/// * the returned future (generally) has smaller size and is (generally) faster.
 ///
 /// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
 ///
@@ -219,13 +230,13 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Possible differences from other implementations
 ///
-/// `join_cyclic!`:
-///
-/// * returns an instance of an anonymous type implemented [`Future`](std::future::Future)
+/// * `join_cyclic!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
 /// instead of requiring it to be inside an `async`. You will be warned if you neither
 /// `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * the returned future (generally) has smaller size
+/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture).
+///
+/// * the returned future (generally) has smaller size and is (generally) faster.
 ///
 /// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
 ///
@@ -250,11 +261,11 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-/// Returns a future that "joins" multiple futures that will be completed concurrently
+/// Returns a future that "joins" multiple futures that will be completed concurrently. May short-circuit.
 ///
 /// It is similar to [`join!`], except it resolves to "continue" value if all the futures resolve to "continue" value,
 /// and resolves to "break" value if one of the futures resolves to "break" value. The "continue" and the "break" value
-/// are dependent on the output type of all the futures
+/// are dependent on the output type of all the futures.
 ///
 /// Here's a basic overview of possible return types and return values:
 ///
@@ -298,6 +309,19 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # DISCLAIMER
 /// This macro does NOT use nightly or beta channel. It is usable on stable release.
 ///
+/// # Possible differences from other implementations
+///
+/// * `try_join!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
+/// instead of requiring it to be inside an `async`. You will be warned if you neither
+/// `.await`, [`poll`](std::future::Future::poll), nor return it.
+///
+/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and can be types more than just
+/// [`Result`] (see the first section above for the supported types).
+///
+/// * the returned future (generally) has smaller size and is (generally) faster.
+///
+/// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
+///
 /// # Examples
 /// ```
 /// # futures::executor::block_on(async {
@@ -327,11 +351,12 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-/// Returns a future that "joins" multiple futures that will be completed concurrently
+/// Returns a future that "joins" multiple futures that will be completed concurrently, using cycling polling strategy.
+/// May short-circuit.
 ///
 /// It is similar to [`join_cyclic!`], except it resolves to "continue" value if all the futures resolve to "continue" value,
 /// and resolves to "break" value if one of the futures resolves to "break" value. The "continue" and the "break" value
-/// are dependent on the output type of all the futures
+/// are dependent on the output type of all the futures.
 ///
 /// Here's a basic overview of possible return types and return values:
 ///
@@ -374,6 +399,19 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # DISCLAIMER
 /// This macro does NOT use nightly or beta channel. It is usable on stable release.
+///
+/// # Possible differences from other implementations
+///
+/// * `try_join_cyclic!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
+/// instead of requiring it to be inside an `async`. You will be warned if you neither
+/// `.await`, [`poll`](std::future::Future::poll), nor return it.
+///
+/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and can be types more than just
+/// [`Result`] (see the first section above for the supported types).
+///
+/// * the returned future (generally) has smaller size and is (generally) faster.
+///
+/// * the returned future is [`Unpin`] if all of the input futures are [`Unpin`].
 ///
 /// # Examples
 /// ```
