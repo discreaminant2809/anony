@@ -275,7 +275,7 @@ pub(crate) fn imp_try(
             #[repr(transparent)]
             enum #join_ty_at_decl<T: Try<Output = ()>> {
                 Inner(PhantomData<T>),
-            };
+            }
 
             impl<T: Try<Output = ()>> Future for #join_ty_at_impl<T> {
                 type Output = T;
@@ -379,7 +379,7 @@ pub(crate) fn imp_try(
     };
 
     let do_sth_w_done = maybe_done_vars.clone().map(|maybe_done_var| {
-        quote!(match Pin::new_unchecked(&mut *#maybe_done_var).poll(cx) {
+        quote!(match MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_var), cx) {
             ControlFlow::Continue(ready) => done &= ready,
             ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
         })
@@ -554,7 +554,11 @@ fn try_trait_and_import() -> pm2::TokenStream {
             type Output;
             type Residual;
 
+            // We don't need `FromResidual` since it is just for implicit error conversion
+            // which is not relevant as we can only require all errors to be the same
+            // due to "unconstrained type parameters"
             fn from_residual(residual: Self::Residual) -> Self;
+
             fn from_output(output: Self::Output) -> Self;
 
             fn branch(self) -> ControlFlow<Self::Residual, Self::Output>;

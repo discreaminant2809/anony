@@ -121,7 +121,7 @@ fn _struct_expansion() {
     };
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_imports, unused_parens, clippy::double_parens)]
 fn _join_expansion() {
     // Before we move on we should know that our `join!` has two efficient expansions for no future and 1 future
 
@@ -130,17 +130,17 @@ fn _join_expansion() {
     // In this case the struct is zero size!
     // Note that we add `#[must_use]` to warn that it is neither futures nor tokio - our version returns a future instead
     let _fut0 = {
+        use ::core::future::Future;
+        use ::core::pin::Pin;
+        use ::core::task::{Context, Poll};
         #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
         struct Join;
 
-        impl ::core::future::Future for Join {
+        impl Future for Join {
             type Output = ();
             #[inline]
-            fn poll(
-                self: ::core::pin::Pin<&mut Self>,
-                _cx: &mut ::core::task::Context<'_>,
-            ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                ::core::task::Poll::Ready(())
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
+                Poll::Ready(())
             }
         }
         Join
@@ -152,21 +152,24 @@ fn _join_expansion() {
     let _fut1 = {
         let fut = async { 13 };
         {
+            use ::core::future::Future;
+            use ::core::pin::Pin;
+            use ::core::task::{Context, Poll};
             #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
             #[repr(transparent)]
-            enum Join<F> {
+            enum Join<F: Future> {
                 Inner(F),
             }
-            impl<F: ::core::future::Future> ::core::future::Future for Join<F> {
-                type Output = (<F as ::core::future::Future>::Output,);
+            impl<F: Future> Future for Join<F> {
+                type Output = (<F as Future>::Output,);
                 #[inline]
                 fn poll(
-                    self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>,
-                ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                    ::core::future::Future::poll(
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
+                    Future::poll(
                         unsafe {
-                            self.map_unchecked_mut(|this| {
+                            Pin::map_unchecked_mut(self, |this| {
                                 let Self::Inner(fut) = this;
                                 fut
                             })
@@ -176,7 +179,8 @@ fn _join_expansion() {
                     .map(|o| (o,))
                 }
             }
-            Join::Inner(::core::future::IntoFuture::into_future(fut))
+            use ::core::future::IntoFuture;
+            Join::Inner(IntoFuture::into_future(fut))
         }
     };
 
@@ -186,44 +190,41 @@ fn _join_expansion() {
         let futs = (async { 134 }, async { "144" }, std::future::pending::<()>());
         // Open another scope so that the futures in the input can't access anything within it
         {
+            use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
+            use ::core::option::Option::{self, None, Some};
+            use ::core::pin::Pin;
+            use ::core::task::{Context, Poll};
+
             // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
             // #[pin_project]
-            enum MaybeDone<F: ::core::future::Future> {
+            enum MaybeDone<F: Future> {
                 Pending(
                     // #[pin]
                     F,
                 ),
                 // It might seem inefficient... but the compiler can optimize the layout
                 // See the `conparisons` example for this regard
-                Ready(::core::option::Option<<F as ::core::future::Future>::Output>),
+                Ready(Option<<F as Future>::Output>),
             }
+
             // Only the wrapped future is considered, not its output, since the former is structurally pinned, while the latter isn't
             // We strictly adhere to the invariant regarding structurally pinned fields
             // If we don't add this, the future's output type is considered also, which shouldn't
             // since the output is NOT structurally pinned
-            impl<F: ::core::future::Future + ::core::marker::Unpin> ::core::marker::Unpin for MaybeDone<F> {}
+            use ::core::marker::Unpin;
+            impl<F: Future + Unpin> Unpin for MaybeDone<F> {}
 
-            impl<F: ::core::future::Future> MaybeDone<F> {
+            impl<F: Future> MaybeDone<F> {
                 // This method is only used to poll and check the status of the wrapped future. It isn't for getting the result!
-                fn poll(
-                    mut self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>,
-                ) -> bool {
+                fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> bool {
                     // SAFETY: pinning projection
-                    match unsafe {
-                        ::core::pin::Pin::get_unchecked_mut(::core::pin::Pin::as_mut(&mut self))
-                    } {
+                    match unsafe { Pin::get_unchecked_mut(Pin::as_mut(&mut self)) } {
                         Self::Pending(fut) => {
                             // SAFETY: pinning projection. `fut` is structurally pinned
-                            match ::core::future::Future::poll(
-                                unsafe { ::core::pin::Pin::new_unchecked(fut) },
-                                cx,
-                            ) {
-                                ::core::task::Poll::Ready(o) => {
-                                    ::core::pin::Pin::set(
-                                        &mut self,
-                                        Self::Ready(::core::option::Option::Some(o)),
-                                    );
+                            match Future::poll(unsafe { Pin::new_unchecked(fut) }, cx) {
+                                Poll::Ready(o) => {
+                                    Pin::set(&mut self, Self::Ready(Some(o)));
                                     true
                                 }
                                 _ => false,
@@ -234,12 +235,10 @@ fn _join_expansion() {
                 }
 
                 // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
-                unsafe fn force_take_output(
-                    self: ::core::pin::Pin<&mut Self>,
-                ) -> <F as ::core::future::Future>::Output {
+                unsafe fn force_take_output(self: Pin<&mut Self>) -> <F as Future>::Output {
                     // SAFETY: pinning projection
-                    match ::core::pin::Pin::get_unchecked_mut(self) {
-                        Self::Pending(_) => ::core::hint::unreachable_unchecked(),
+                    match Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => unreachable_unchecked(),
                         // SAFETY: the output is NOT structurally pinned
                         Self::Ready(o) => o.take().unwrap_unchecked(),
                     }
@@ -249,11 +248,7 @@ fn _join_expansion() {
             // Now, our spotlight!
             #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
             // #[pin_project]
-            enum Join<
-                F0: ::core::future::Future,
-                F1: ::core::future::Future,
-                F2: ::core::future::Future,
-            > {
+            enum Join<F0: Future, F1: Future, F2: Future> {
                 // We encapsulate fields using enum variant!
                 // To access these fields, we must pattern matching with this variant, which requires us to write `Join::Inner`...
                 // wait... we can't even specify the struct's name to begin with!
@@ -270,71 +265,60 @@ fn _join_expansion() {
                     MaybeDone<F2>,
                 ),
             }
-            impl<
-                    F0: ::core::future::Future,
-                    F1: ::core::future::Future,
-                    F2: ::core::future::Future,
-                > ::core::future::Future for Join<F0, F1, F2>
-            {
-                // we include the additional comma in the end
-                // previously we should return an 1-ary tuple on having just 1 future to join so that it consistently with 1-ary tuple's construct.
-                // However, it is not neccessary anymore! We generate a different implementation for 1-ary `join!``
+
+            impl<F0: Future, F1: Future, F2: Future> Future for Join<F0, F1, F2> {
                 type Output = (
-                    <F0 as ::core::future::Future>::Output,
-                    <F1 as ::core::future::Future>::Output,
-                    <F2 as ::core::future::Future>::Output,
+                    <F0 as Future>::Output,
+                    <F1 as Future>::Output,
+                    <F2 as Future>::Output,
                 );
                 fn poll(
-                    self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>,
-                ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
                     // SAFETY: pinning projection! All `Maybedone`s are structurally pinned
                     let Self::Inner(maybe_done0, maybe_done1, maybe_done2) =
-                        unsafe { ::core::pin::Pin::get_unchecked_mut(self) };
-
+                        unsafe { Pin::get_unchecked_mut(self) };
                     if !unsafe {
-                        // only use single ampersand here, since we must poll all of these futures and not short-circuit any
-                        MaybeDone::poll(::core::pin::Pin::new_unchecked(maybe_done0), cx)
-                            & MaybeDone::poll(::core::pin::Pin::new_unchecked(maybe_done1), cx)
-                            & MaybeDone::poll(::core::pin::Pin::new_unchecked(maybe_done2), cx)
+                        let mut done = true;
+                        done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx);
+                        done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx);
+                        done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx);
+                        done
                     } {
-                        return ::core::task::Poll::Pending;
+                        return Poll::Pending;
                     }
-
                     unsafe {
                         // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
                         match maybe_done0 {
-                            MaybeDone::Ready(Some(_)) => ::core::task::Poll::Ready((
-                                // SAFETY: they're at `MaybeDone::Ready(Some)` variant
-                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
-                                    maybe_done0,
+                            MaybeDone::Ready(Some(_)) => Poll::Ready(
+                                ((
+                                    // SAFETY: they're at `MaybeDone::Ready(Some)` variant
+                                    MaybeDone::force_take_output(Pin::new_unchecked(maybe_done0)),
+                                    MaybeDone::force_take_output(Pin::new_unchecked(maybe_done1)),
+                                    MaybeDone::force_take_output(Pin::new_unchecked(maybe_done2)),
                                 )),
-                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
-                                    maybe_done1,
-                                )),
-                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
-                                    maybe_done2,
-                                )),
-                            )),
+                            ),
                             // SAFETY: they have been done. It leads to a more efficient codegen
-                            MaybeDone::Pending(_) => ::core::hint::unreachable_unchecked(),
-                            _ => ::core::panic!("`join!` future polled after completion"),
+                            MaybeDone::Pending(_) => unreachable_unchecked(),
+                            _ => ::core::panic!("`{}!` future polled after completion", "join"),
                         }
                     }
                 }
             }
 
             // Finally...
+            use ::core::future::IntoFuture;
             Join::Inner(
-                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.0)),
-                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.1)),
-                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.2)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.0)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.1)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.2)),
             )
         }
     };
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_imports, unused_parens, clippy::double_parens)]
 fn _join_cyclic_expansion() {
     // Before we move on we should know that our `join_cyclic!` has two efficient expansions for no future and 1 future
 
@@ -342,17 +326,17 @@ fn _join_cyclic_expansion() {
     let _fut0 = anony::join_cyclic!();
     // For no future and 1 future, the expansions are the same as `join!`, and only differ in the struct's name
     let _fut0 = {
+        use ::core::future::Future;
+        use ::core::pin::Pin;
+        use ::core::task::{Context, Poll};
         #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
         struct JoinCyclic;
 
-        impl ::core::future::Future for JoinCyclic {
+        impl Future for JoinCyclic {
             type Output = ();
             #[inline]
-            fn poll(
-                self: ::core::pin::Pin<&mut Self>,
-                _cx: &mut ::core::task::Context<'_>,
-            ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                ::core::task::Poll::Ready(())
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
+                Poll::Ready(())
             }
         }
         JoinCyclic
@@ -363,21 +347,24 @@ fn _join_cyclic_expansion() {
     let _fut1 = {
         let fut = async { 13 };
         {
+            use ::core::future::Future;
+            use ::core::pin::Pin;
+            use ::core::task::{Context, Poll};
             #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
             #[repr(transparent)]
-            enum JoinCyclic<F> {
+            enum JoinCyclic<F: Future> {
                 Inner(F),
             }
-            impl<F: ::core::future::Future> ::core::future::Future for JoinCyclic<F> {
-                type Output = (<F as ::core::future::Future>::Output,);
+            impl<F: Future> Future for JoinCyclic<F> {
+                type Output = (<F as Future>::Output,);
                 #[inline]
                 fn poll(
-                    self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>,
-                ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
-                    ::core::future::Future::poll(
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
+                    Future::poll(
                         unsafe {
-                            self.map_unchecked_mut(|this| {
+                            Pin::map_unchecked_mut(self, |this| {
                                 let Self::Inner(fut) = this;
                                 fut
                             })
@@ -387,7 +374,8 @@ fn _join_cyclic_expansion() {
                     .map(|o| (o,))
                 }
             }
-            JoinCyclic::Inner(::core::future::IntoFuture::into_future(fut))
+            use ::core::future::IntoFuture;
+            JoinCyclic::Inner(IntoFuture::into_future(fut))
         }
     };
 
@@ -397,34 +385,30 @@ fn _join_cyclic_expansion() {
     let _fut_n = {
         let futs = (async { 134 }, async { "144" }, std::future::pending::<()>());
         {
+            use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
+            use ::core::option::Option::{self, None, Some};
+            use ::core::pin::Pin;
+            use ::core::task::{Context, Poll};
+
             // #[pin_project]
-            enum MaybeDone<F: ::core::future::Future> {
+            enum MaybeDone<F: Future> {
                 Pending(
                     // #[pin]
                     F,
                 ),
-                Ready(::core::option::Option<<F as ::core::future::Future>::Output>),
+                Ready(Option<<F as Future>::Output>),
             }
-            impl<F: ::core::future::Future + ::core::marker::Unpin> ::core::marker::Unpin for MaybeDone<F> {}
+            use ::core::marker::Unpin;
+            impl<F: Future + Unpin> Unpin for MaybeDone<F> {}
 
-            impl<F: ::core::future::Future> MaybeDone<F> {
-                fn poll(
-                    mut self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>,
-                ) -> bool {
-                    match unsafe {
-                        ::core::pin::Pin::get_unchecked_mut(::core::pin::Pin::as_mut(&mut self))
-                    } {
+            impl<F: Future> MaybeDone<F> {
+                fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> bool {
+                    match unsafe { Pin::get_unchecked_mut(Pin::as_mut(&mut self)) } {
                         Self::Pending(fut) => {
-                            match ::core::future::Future::poll(
-                                unsafe { ::core::pin::Pin::new_unchecked(fut) },
-                                cx,
-                            ) {
-                                ::core::task::Poll::Ready(o) => {
-                                    ::core::pin::Pin::set(
-                                        &mut self,
-                                        Self::Ready(::core::option::Option::Some(o)),
-                                    );
+                            match Future::poll(unsafe { Pin::new_unchecked(fut) }, cx) {
+                                Poll::Ready(o) => {
+                                    Pin::set(&mut self, Self::Ready(Some(o)));
                                     true
                                 }
                                 _ => false,
@@ -435,12 +419,10 @@ fn _join_cyclic_expansion() {
                 }
 
                 // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
-                unsafe fn force_take_output(
-                    self: ::core::pin::Pin<&mut Self>,
-                ) -> <F as ::core::future::Future>::Output {
+                unsafe fn force_take_output(self: Pin<&mut Self>) -> <F as Future>::Output {
                     // SAFETY: pinning projection
-                    match ::core::pin::Pin::get_unchecked_mut(self) {
-                        Self::Pending(_) => ::core::hint::unreachable_unchecked(),
+                    match Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => unreachable_unchecked(),
                         // SAFETY: the output is NOT structurally pinned
                         Self::Ready(o) => o.take().unwrap_unchecked(),
                     }
@@ -449,11 +431,635 @@ fn _join_cyclic_expansion() {
 
             // #[pin_project]
             #[must_use = "unlike other `join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
-            enum JoinCyclic<
-                F0: ::core::future::Future,
-                F1: ::core::future::Future,
-                F2: ::core::future::Future,
-            > {
+            enum JoinCyclic<F0: Future, F1: Future, F2: Future> {
+                Inner(
+                    // #[pin]
+                    MaybeDone<F0>,
+                    // #[pin]
+                    MaybeDone<F1>,
+                    // #[pin]
+                    MaybeDone<F2>,
+                    // This is NOT structurally pinned!
+                    usize,
+                ),
+            }
+            impl<F0: Future, F1: Future, F2: Future> Future for JoinCyclic<F0, F1, F2> {
+                type Output = (
+                    <F0 as Future>::Output,
+                    <F1 as Future>::Output,
+                    <F2 as Future>::Output,
+                );
+                fn poll(
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
+                    let Self::Inner(maybe_done0, maybe_done1, maybe_done2, skip_next_time) =
+                        unsafe { Pin::get_unchecked_mut(self) };
+
+                    // For `join_cyclic!`, we will use `tokio`'s approach
+                    // See https://docs.rs/tokio/latest/src/tokio/macros/join.rs.html#57-166
+                    // Tokio's code is licensed under the MIT License: https://github.com/tokio-rs/tokio/blob/master/LICENSE
+                    if !unsafe {
+                        const COUNT: usize = 3usize;
+                        let mut done = true;
+                        let mut to_run = COUNT;
+                        let mut to_skip =
+                            ::core::mem::replace(skip_next_time, (*skip_next_time + 1) % COUNT);
+                        loop {
+                            if to_skip > 0 {
+                                to_skip -= 1;
+                            } else {
+                                // We alter the logic a bit, since we guarantee that `to_run` starts with a number > 1
+                                // because we initialize it with `COUNT`.
+                                // By doing this, we reduce the number of checks
+                                done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx);
+                                if to_run <= 1 {
+                                    // if we are the last one...
+                                    break done;
+                                }
+                                to_run -= 1;
+                            }
+
+                            // The same for the rest
+                            if to_skip > 0 {
+                                to_skip -= 1;
+                            } else {
+                                done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx);
+                                if to_run <= 1 {
+                                    break done;
+                                }
+                                to_run -= 1;
+                            }
+
+                            if to_skip > 0 {
+                                to_skip -= 1;
+                            } else {
+                                done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx);
+                                if to_run <= 1 {
+                                    break done;
+                                }
+                                to_run -= 1;
+                            }
+                        }
+                    } {
+                        return Poll::Pending;
+                    }
+                    unsafe {
+                        // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
+                        match maybe_done0 {
+                            MaybeDone::Ready(Some(_)) => Poll::Ready(
+                                ((
+                                    // SAFETY: they're at `MaybeDone::Ready(Some)` variant
+                                    MaybeDone::force_take_output(Pin::new_unchecked(maybe_done0)),
+                                    MaybeDone::force_take_output(Pin::new_unchecked(maybe_done1)),
+                                    MaybeDone::force_take_output(Pin::new_unchecked(maybe_done2)),
+                                )),
+                            ),
+                            // SAFETY: they have been done. It leads to a more efficient codegen
+                            MaybeDone::Pending(_) => unreachable_unchecked(),
+                            _ => ::core::panic!(
+                                "`{}!` future polled after completion",
+                                "join_cyclic"
+                            ),
+                        }
+                    }
+                }
+            }
+            use ::core::future::IntoFuture;
+            JoinCyclic::Inner(
+                MaybeDone::Pending(IntoFuture::into_future(futs.0)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.1)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.2)),
+                0,
+            )
+        }
+    };
+}
+
+// This function exists since an empty
+fn expect_output(_f: impl std::future::Future<Output = Option<()>>) {}
+
+// Separate it so that you can focus on the main logic, since all `try_join(_cyclic)` expansions here have this
+// The actual expansion will inline it instead
+macro_rules! try_trait {
+    () => {
+        trait Try {
+            type Output;
+            type Residual;
+
+            // We don't need `FromResidual` since it is just for implicit error conversion
+            // which is not relevant as we can only require all errors to be the same
+            // due to "unconstrained type parameters"
+            fn from_residual(residual: Self::Residual) -> Self;
+
+            fn from_output(output: Self::Output) -> Self;
+
+            fn branch(self) -> ControlFlow<Self::Residual, Self::Output>;
+        }
+
+        trait Residual<O> {
+            type TryType: Try<Output = O, Residual = Self>;
+        }
+        struct OptionResidual;
+
+        impl<T> Try for Option<T> {
+            type Output = T;
+            type Residual = OptionResidual;
+            #[inline]
+            fn from_residual(_residual: Self::Residual) -> Self {
+                None
+            }
+            #[inline]
+            fn from_output(output: Self::Output) -> Self {
+                Some(output)
+            }
+            #[inline]
+            fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+                match self {
+                    Some(val) => ControlFlow::Continue(val),
+                    None => ControlFlow::Break(OptionResidual),
+                }
+            }
+        }
+        impl<T> Residual<T> for OptionResidual {
+            type TryType = Option<T>;
+        }
+        #[repr(transparent)]
+        struct ResultResidual<E>(E);
+
+        impl<T, E> Try for Result<T, E> {
+            type Output = T;
+            type Residual = ResultResidual<E>;
+            #[inline]
+            fn from_residual(residual: Self::Residual) -> Self {
+                Err(residual.0)
+            }
+            #[inline]
+            fn from_output(output: Self::Output) -> Self {
+                Ok(output)
+            }
+            #[inline]
+            fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+                match self {
+                    Ok(val) => ControlFlow::Continue(val),
+                    Err(e) => ControlFlow::Break(ResultResidual(e)),
+                }
+            }
+        }
+        impl<T, E> Residual<T> for ResultResidual<E> {
+            type TryType = Result<T, E>;
+        }
+        #[repr(transparent)]
+        struct ControlFlowResidual<B>(B);
+
+        impl<B, C> Try for ControlFlow<B, C> {
+            type Output = C;
+            type Residual = ControlFlowResidual<B>;
+            #[inline]
+            fn from_residual(residual: Self::Residual) -> Self {
+                ControlFlow::Break(residual.0)
+            }
+            #[inline]
+            fn from_output(output: Self::Output) -> Self {
+                ControlFlow::Continue(output)
+            }
+            #[inline]
+            fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+                match self {
+                    ControlFlow::Continue(c) => ControlFlow::Continue(c),
+                    ControlFlow::Break(b) => ControlFlow::Break(ControlFlowResidual(b)),
+                }
+            }
+        }
+        impl<B, C> Residual<C> for ControlFlowResidual<B> {
+            type TryType = ControlFlow<B, C>;
+        }
+    };
+}
+
+#[allow(dead_code, unused_imports, unused_parens, clippy::double_parens)]
+fn _try_join_expansion() {
+    // No future at all
+    let fut_0 = anony::try_join!();
+    expect_output(fut_0);
+    let fut_0 = {
+        use ::core::future::Future;
+        use ::core::marker::PhantomData;
+        use ::core::ops::ControlFlow;
+        use ::core::option::Option::{self, None, Some};
+        use ::core::pin::Pin;
+        use ::core::result::Result::{self, Err, Ok};
+        use ::core::task::{Context, Poll};
+
+        // See the explanation above
+        // We inline the whole `Try` and `Residual` implementation here in an actual expansion
+        try_trait!();
+
+        #[must_use = "unlike other `try_join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+        #[repr(transparent)]
+        enum TryJoin<T: Try<Output = ()>> {
+            Inner(PhantomData<T>),
+        }
+        impl<T: Try<Output = ()>> Future for TryJoin<T> {
+            type Output = T;
+            #[inline]
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
+                Poll::Ready(Try::from_output(()))
+            }
+        }
+        TryJoin::Inner(PhantomData)
+    };
+    expect_output(fut_0);
+
+    // Just 1 future
+    let _fut_1 = anony::try_join!(async { Some(()) });
+    let _fut_1 = {
+        let fut = async { Some(()) };
+        {
+            use ::core::future::Future;
+            use ::core::ops::ControlFlow;
+            use ::core::option::Option::{self, None, Some};
+            use ::core::pin::Pin;
+            use ::core::result::Result::{self, Err, Ok};
+            use ::core::task::{Context, Poll};
+
+            try_trait!();
+
+            #[must_use = "unlike other `try_join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+            #[repr(transparent)]
+            enum TryJoin<F> {
+                Inner(F),
+            }
+            impl<F: Future, R: Residual<(<<F as Future>::Output as Try>::Output,)>> Future for TryJoin<F>
+            where
+                <F as Future>::Output: Try<Residual = R>,
+            {
+                type Output = <R as Residual<(<<F as Future>::Output as Try>::Output,)>>::TryType;
+                #[inline]
+                fn poll(
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
+                    Future::poll(
+                        unsafe {
+                            Pin::map_unchecked_mut(self, |this| {
+                                let Self::Inner(fut) = this;
+                                fut
+                            })
+                        },
+                        cx,
+                    )
+                    // Things get a little bit complicated
+                    .map(|o| match Try::branch(o) {
+                        ControlFlow::Continue(c) => Try::from_output((c,)),
+                        ControlFlow::Break(b) => Try::from_residual(b),
+                    })
+                }
+            }
+            use ::core::future::IntoFuture;
+            TryJoin::Inner(IntoFuture::into_future(fut))
+        }
+    };
+
+    // Base case
+    let _fut_3 = anony::try_join!(async { Some(()) }, async { Some(()) }, async { Some(()) });
+    let _fut_3 = {
+        let futs = (async { Some(()) }, async { Some(()) }, async { Some(()) });
+        {
+            use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
+            use ::core::ops::ControlFlow;
+            use ::core::option::Option::{self, None, Some};
+            use ::core::pin::Pin;
+            use ::core::result::Result::{self, Err, Ok};
+            use ::core::task::{Context, Poll};
+
+            try_trait!();
+
+            // #[pin_project]
+            enum MaybeDone<F: Future>
+            where
+                F::Output: Try,
+            {
+                Pending(
+                    // #[pin]
+                    F,
+                ),
+                // Don't be confused with `Future::Output` and `Try::Output`!
+                Ready(Option<<<F as Future>::Output as Try>::Output>),
+            }
+            use ::core::marker::Unpin;
+            impl<F: Future + Unpin> Unpin for MaybeDone<F> where <F as Future>::Output: Try {}
+
+            impl<F: Future> MaybeDone<F>
+            where
+                <F as Future>::Output: Try,
+            {
+                fn poll(
+                    mut self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> ControlFlow<<F::Output as Try>::Residual, bool> {
+                    unsafe {
+                        match Pin::get_unchecked_mut(Pin::as_mut(&mut self)) {
+                            MaybeDone::Pending(fut) => {
+                                match Future::poll(Pin::new_unchecked(fut), cx) {
+                                    Poll::Ready(o) => match Try::branch(o) {
+                                        ControlFlow::Continue(c) => {
+                                            Pin::set(&mut self, Self::Ready(Some(c)));
+                                            ControlFlow::Continue(true)
+                                        }
+                                        ControlFlow::Break(b) => ControlFlow::Break(b),
+                                    },
+                                    Poll::Pending => ControlFlow::Continue(false),
+                                }
+                            }
+                            MaybeDone::Ready(_) => ControlFlow::Continue(true),
+                        }
+                    }
+                }
+
+                // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
+                unsafe fn force_take_output(
+                    self: Pin<&mut Self>,
+                ) -> <<F as Future>::Output as Try>::Output {
+                    // SAFETY: pinning projection
+                    match Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => unreachable_unchecked(),
+                        // SAFETY: the output is NOT structurally pinned
+                        Self::Ready(o) => o.take().unwrap_unchecked(),
+                    }
+                }
+            }
+
+            // #[pin_project]
+            #[must_use = "unlike other `try_join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+            enum TryJoin<
+                F0: Future,
+                F1: Future,
+                F2: Future,
+                R: Residual<(
+                    <<F0 as Future>::Output as Try>::Output,
+                    <<F1 as Future>::Output as Try>::Output,
+                    <<F2 as Future>::Output as Try>::Output,
+                )>,
+            >
+            where
+                <F0 as Future>::Output: Try<Residual = R>,
+                <F1 as Future>::Output: Try<Residual = R>,
+                <F2 as Future>::Output: Try<Residual = R>,
+            {
+                Inner(
+                    // #[pin]
+                    MaybeDone<F0>,
+                    // #[pin]
+                    MaybeDone<F1>,
+                    // #[pin]
+                    MaybeDone<F2>,
+                ),
+            }
+
+            impl<
+                    F0: Future,
+                    F1: Future,
+                    F2: Future,
+                    R: Residual<(
+                        <<F0 as Future>::Output as Try>::Output,
+                        <<F1 as Future>::Output as Try>::Output,
+                        <<F2 as Future>::Output as Try>::Output,
+                    )>,
+                > Future for TryJoin<F0, F1, F2, R>
+            where
+                <F0 as Future>::Output: Try<Residual = R>,
+                <F1 as Future>::Output: Try<Residual = R>,
+                <F2 as Future>::Output: Try<Residual = R>,
+            {
+                type Output = <R as Residual<(
+                    <<F0 as Future>::Output as Try>::Output,
+                    <<F1 as Future>::Output as Try>::Output,
+                    <<F2 as Future>::Output as Try>::Output,
+                )>>::TryType;
+
+                fn poll(
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
+                    // SAFETY: pinning projection! All `Maybedone`s are structurally pinned
+                    let Self::Inner(maybe_done0, maybe_done1, maybe_done2) =
+                        unsafe { Pin::get_unchecked_mut(self) };
+                    if !unsafe {
+                        let mut done = true;
+                        match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx) {
+                            ControlFlow::Continue(ready) => done &= ready,
+                            ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
+                        }
+                        match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx) {
+                            ControlFlow::Continue(ready) => done &= ready,
+                            ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
+                        }
+                        match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx) {
+                            ControlFlow::Continue(ready) => done &= ready,
+                            ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
+                        }
+                        done
+                    } {
+                        return Poll::Pending;
+                    }
+                    unsafe {
+                        // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
+                        match maybe_done0 {
+                            MaybeDone::Ready(Some(_)) => Poll::Ready(Try::from_output((
+                                MaybeDone::force_take_output(Pin::new_unchecked(maybe_done0)),
+                                MaybeDone::force_take_output(Pin::new_unchecked(maybe_done1)),
+                                MaybeDone::force_take_output(Pin::new_unchecked(maybe_done2)),
+                            ))),
+                            MaybeDone::Pending(_) => unreachable_unchecked(),
+                            _ => ::core::panic!("`{}!` future polled after completion", "try_join"),
+                        }
+                    }
+                }
+            }
+
+            use ::core::future::IntoFuture;
+            TryJoin::Inner(
+                MaybeDone::Pending(IntoFuture::into_future(futs.0)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.1)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.2)),
+            )
+        }
+    };
+}
+
+#[allow(dead_code, unused_imports, unused_parens, clippy::double_parens)]
+fn _try_join_cyclic_expansion() {
+    // No future at all
+    let fut_0 = anony::try_join_cyclic!();
+    expect_output(fut_0);
+    let fut_0 = {
+        use ::core::future::Future;
+        use ::core::marker::PhantomData;
+        use ::core::ops::ControlFlow;
+        use ::core::option::Option::{self, None, Some};
+        use ::core::pin::Pin;
+        use ::core::result::Result::{self, Err, Ok};
+        use ::core::task::{Context, Poll};
+
+        // See the explanation above
+        // We inline the whole `Try` and `Residual` implementation here in an actual expansion
+        try_trait!();
+
+        #[must_use = "unlike other `try_join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+        #[repr(transparent)]
+        enum TryJoinCyclic<T: Try<Output = ()>> {
+            Inner(PhantomData<T>),
+        }
+        impl<T: Try<Output = ()>> Future for TryJoinCyclic<T> {
+            type Output = T;
+            #[inline]
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<<Self as Future>::Output> {
+                Poll::Ready(Try::from_output(()))
+            }
+        }
+        TryJoinCyclic::Inner(PhantomData)
+    };
+    expect_output(fut_0);
+
+    // Just 1 future
+    let _fut_1 = anony::try_join_cyclic!(async { Some(()) });
+    let _fut_1 = {
+        let fut = async { Some(()) };
+        {
+            use ::core::future::Future;
+            use ::core::ops::ControlFlow;
+            use ::core::option::Option::{self, None, Some};
+            use ::core::pin::Pin;
+            use ::core::result::Result::{self, Err, Ok};
+            use ::core::task::{Context, Poll};
+
+            try_trait!();
+
+            #[must_use = "unlike other `try_join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+            #[repr(transparent)]
+            enum TryJoinCyclic<F> {
+                Inner(F),
+            }
+            impl<F: Future, R: Residual<(<<F as Future>::Output as Try>::Output,)>> Future for TryJoinCyclic<F>
+            where
+                <F as Future>::Output: Try<Residual = R>,
+            {
+                type Output = <R as Residual<(<<F as Future>::Output as Try>::Output,)>>::TryType;
+                #[inline]
+                fn poll(
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
+                    Future::poll(
+                        unsafe {
+                            Pin::map_unchecked_mut(self, |this| {
+                                let Self::Inner(fut) = this;
+                                fut
+                            })
+                        },
+                        cx,
+                    )
+                    // Things get a little bit complicated
+                    .map(|o| match Try::branch(o) {
+                        ControlFlow::Continue(c) => Try::from_output((c,)),
+                        ControlFlow::Break(b) => Try::from_residual(b),
+                    })
+                }
+            }
+            use ::core::future::IntoFuture;
+            TryJoinCyclic::Inner(IntoFuture::into_future(fut))
+        }
+    };
+
+    let _fut_3 =
+        anony::try_join_cyclic!(async { Some(()) }, async { Some(()) }, async { Some(()) });
+    let _f_3 = {
+        let futs = (async { Some(()) }, async { Some(()) }, async { Some(()) });
+        {
+            use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
+            use ::core::ops::ControlFlow;
+            use ::core::option::Option::{self, None, Some};
+            use ::core::pin::Pin;
+            use ::core::result::Result::{self, Err, Ok};
+            use ::core::task::{Context, Poll};
+
+            try_trait!();
+
+            // #[pin_project]
+            enum MaybeDone<F: Future>
+            where
+                F::Output: Try,
+            {
+                Pending(
+                    // #[pin]
+                    F,
+                ),
+                // Don't be confused with `Future::Output` and `Try::Output`!
+                Ready(Option<<<F as Future>::Output as Try>::Output>),
+            }
+            use ::core::marker::Unpin;
+            impl<F: Future + Unpin> Unpin for MaybeDone<F> where <F as Future>::Output: Try {}
+
+            impl<F: Future> MaybeDone<F>
+            where
+                <F as Future>::Output: Try,
+            {
+                fn poll(
+                    mut self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> ControlFlow<<F::Output as Try>::Residual, bool> {
+                    unsafe {
+                        match Pin::get_unchecked_mut(Pin::as_mut(&mut self)) {
+                            MaybeDone::Pending(fut) => {
+                                match Future::poll(Pin::new_unchecked(fut), cx) {
+                                    Poll::Ready(o) => match Try::branch(o) {
+                                        ControlFlow::Continue(c) => {
+                                            Pin::set(&mut self, Self::Ready(Some(c)));
+                                            ControlFlow::Continue(true)
+                                        }
+                                        ControlFlow::Break(b) => ControlFlow::Break(b),
+                                    },
+                                    Poll::Pending => ControlFlow::Continue(false),
+                                }
+                            }
+                            MaybeDone::Ready(_) => ControlFlow::Continue(true),
+                        }
+                    }
+                }
+
+                // SAFETY: the caller must only call it when `self` is `Self::Ready(Some)`
+                unsafe fn force_take_output(
+                    self: Pin<&mut Self>,
+                ) -> <<F as Future>::Output as Try>::Output {
+                    // SAFETY: pinning projection
+                    match Pin::get_unchecked_mut(self) {
+                        Self::Pending(_) => unreachable_unchecked(),
+                        // SAFETY: the output is NOT structurally pinned
+                        Self::Ready(o) => o.take().unwrap_unchecked(),
+                    }
+                }
+            }
+
+            // #[pin_project]
+            #[must_use = "unlike other `try_join!` implementations, this one returns a `Future` that must be explicitly `.await`ed or polled"]
+            enum TryJoinCyclic<
+                F0: Future,
+                F1: Future,
+                F2: Future,
+                R: Residual<(
+                    <<F0 as Future>::Output as Try>::Output,
+                    <<F1 as Future>::Output as Try>::Output,
+                    <<F2 as Future>::Output as Try>::Output,
+                )>,
+            >
+            where
+                <F0 as Future>::Output: Try<Residual = R>,
+                <F1 as Future>::Output: Try<Residual = R>,
+                <F2 as Future>::Output: Try<Residual = R>,
+            {
                 Inner(
                     // #[pin]
                     MaybeDone<F0>,
@@ -466,22 +1072,31 @@ fn _join_cyclic_expansion() {
                 ),
             }
             impl<
-                    F0: ::core::future::Future,
-                    F1: ::core::future::Future,
-                    F2: ::core::future::Future,
-                > ::core::future::Future for JoinCyclic<F0, F1, F2>
+                    F0: Future,
+                    F1: Future,
+                    F2: Future,
+                    R: Residual<(
+                        <<F0 as Future>::Output as Try>::Output,
+                        <<F1 as Future>::Output as Try>::Output,
+                        <<F2 as Future>::Output as Try>::Output,
+                    )>,
+                > Future for TryJoinCyclic<F0, F1, F2, R>
+            where
+                <F0 as Future>::Output: Try<Residual = R>,
+                <F1 as Future>::Output: Try<Residual = R>,
+                <F2 as Future>::Output: Try<Residual = R>,
             {
-                type Output = (
-                    <F0 as ::core::future::Future>::Output,
-                    <F1 as ::core::future::Future>::Output,
-                    <F2 as ::core::future::Future>::Output,
-                );
+                type Output = <R as Residual<(
+                    <<F0 as Future>::Output as Try>::Output,
+                    <<F1 as Future>::Output as Try>::Output,
+                    <<F2 as Future>::Output as Try>::Output,
+                )>>::TryType;
                 fn poll(
-                    self: ::core::pin::Pin<&mut Self>,
-                    cx: &mut ::core::task::Context<'_>,
-                ) -> ::core::task::Poll<<Self as ::core::future::Future>::Output> {
+                    self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                ) -> Poll<<Self as Future>::Output> {
                     let Self::Inner(maybe_done0, maybe_done1, maybe_done2, skip_next_time) =
-                        unsafe { ::core::pin::Pin::get_unchecked_mut(self) };
+                        unsafe { Pin::get_unchecked_mut(self) };
 
                     // For `join_cyclic!`, we will use `tokio`'s approach
                     // See https://docs.rs/tokio/latest/src/tokio/macros/join.rs.html#57-166
@@ -490,13 +1105,8 @@ fn _join_cyclic_expansion() {
                         const COUNT: usize = 3usize;
                         let mut done = true;
                         let mut to_run = COUNT;
-                        let mut to_skip = ::core::mem::replace(
-                            skip_next_time,
-                            // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
-                            // so `clippy::modulo_one` won't be triggered
-                            (*skip_next_time + 1) % COUNT,
-                        );
-
+                        let mut to_skip =
+                            ::core::mem::replace(skip_next_time, (*skip_next_time + 1) % COUNT);
                         loop {
                             if to_skip > 0 {
                                 to_skip -= 1;
@@ -504,10 +1114,12 @@ fn _join_cyclic_expansion() {
                                 // We alter the logic a bit, since we guarantee that `to_run` starts with a number > 1
                                 // because we initialize it with `COUNT`.
                                 // By doing this, we reduce the number of checks
-                                done &= MaybeDone::poll(
-                                    ::core::pin::Pin::new_unchecked(maybe_done0),
-                                    cx,
-                                );
+                                match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx) {
+                                    ControlFlow::Continue(ready) => done &= ready,
+                                    ControlFlow::Break(r) => {
+                                        return Poll::Ready(Try::from_residual(r))
+                                    }
+                                }
                                 if to_run <= 1 {
                                     // if we are the last one...
                                     break done;
@@ -519,23 +1131,26 @@ fn _join_cyclic_expansion() {
                             if to_skip > 0 {
                                 to_skip -= 1;
                             } else {
-                                done &= MaybeDone::poll(
-                                    ::core::pin::Pin::new_unchecked(maybe_done1),
-                                    cx,
-                                );
+                                match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx) {
+                                    ControlFlow::Continue(ready) => done &= ready,
+                                    ControlFlow::Break(r) => {
+                                        return Poll::Ready(Try::from_residual(r))
+                                    }
+                                }
                                 if to_run <= 1 {
                                     break done;
                                 }
                                 to_run -= 1;
                             }
-
                             if to_skip > 0 {
                                 to_skip -= 1;
                             } else {
-                                done &= MaybeDone::poll(
-                                    ::core::pin::Pin::new_unchecked(maybe_done2),
-                                    cx,
-                                );
+                                match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx) {
+                                    ControlFlow::Continue(ready) => done &= ready,
+                                    ControlFlow::Break(r) => {
+                                        return Poll::Ready(Try::from_residual(r))
+                                    }
+                                }
                                 if to_run <= 1 {
                                     break done;
                                 }
@@ -543,36 +1158,32 @@ fn _join_cyclic_expansion() {
                             }
                         }
                     } {
-                        return ::core::task::Poll::Pending;
+                        return Poll::Pending;
                     }
 
                     unsafe {
                         // We only need to check the first MaybeDone since all the MaybeDone::Ready are either all Some or all None
                         match maybe_done0 {
-                            MaybeDone::Ready(Some(_)) => ::core::task::Poll::Ready((
-                                // SAFETY: they're at `MaybeDone::Ready(Some)` variant
-                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
-                                    maybe_done0,
-                                )),
-                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
-                                    maybe_done1,
-                                )),
-                                MaybeDone::force_take_output(::core::pin::Pin::new_unchecked(
-                                    maybe_done2,
-                                )),
-                            )),
-                            // SAFETY: they have been done. It leads to a more efficient codegen
-                            MaybeDone::Pending(_) => ::core::hint::unreachable_unchecked(),
-                            _ => ::core::panic!("`join!` future polled after completion"),
+                            MaybeDone::Ready(Some(_)) => Poll::Ready(Try::from_output((
+                                MaybeDone::force_take_output(Pin::new_unchecked(maybe_done0)),
+                                MaybeDone::force_take_output(Pin::new_unchecked(maybe_done1)),
+                                MaybeDone::force_take_output(Pin::new_unchecked(maybe_done2)),
+                            ))),
+                            MaybeDone::Pending(_) => unreachable_unchecked(),
+                            _ => ::core::panic!(
+                                "`{}!` future polled after completion",
+                                "try_join_cyclic"
+                            ),
                         }
                     }
                 }
             }
 
-            JoinCyclic::Inner(
-                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.0)),
-                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.1)),
-                MaybeDone::Pending(::core::future::IntoFuture::into_future(futs.2)),
+            use ::core::future::IntoFuture;
+            TryJoinCyclic::Inner(
+                MaybeDone::Pending(IntoFuture::into_future(futs.0)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.1)),
+                MaybeDone::Pending(IntoFuture::into_future(futs.2)),
                 0,
             )
         }
