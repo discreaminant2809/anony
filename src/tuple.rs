@@ -59,6 +59,7 @@ fn imp_core_part(n: usize) -> (pm2::TokenStream, Vec<Index>) {
         quote!()
     };
 
+    // Separate case to avoid warning related to the unit type
     if n == 0 {
         let part = quote!(
             use ::core::pin::Pin;
@@ -79,10 +80,16 @@ fn imp_core_part(n: usize) -> (pm2::TokenStream, Vec<Index>) {
             }
 
             use ::core::fmt::Debug;
-            impl<#(#t_generics: Debug),*> Debug for Tuple<#(#t_generics),*> {
+            impl Debug for Tuple {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     f.write_str("()")
                 }
+            }
+
+            use ::core::convert::From;
+            impl From<Tuple> for () {
+                #[inline]
+                fn from(x: Tuple) -> Self {}
             }
 
             #derive_serde
@@ -141,6 +148,14 @@ fn imp_core_part(n: usize) -> (pm2::TokenStream, Vec<Index>) {
                         .field(&self.#indices)
                     )*
                     .finish()
+            }
+        }
+
+        use ::core::convert::From;
+        impl<#(#t_generics),*> From<Tuple<#(#t_generics),*>> for (#(#t_generics),*,) {
+            #[inline]
+            fn from(x: Tuple<#(#t_generics),*>) -> Self {
+                (#(x.#indices),*,)
             }
         }
 

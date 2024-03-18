@@ -180,6 +180,11 @@ fn demonstrate_tuple() {
     // );
     let serialized = serde_json::ser::to_string(&o1).unwrap();
     println!("{serialized}");
+    println!("{}", serde_json::ser::to_string(&tuple!()).unwrap());
+
+    println!("{:?}", Into::<(_, _, _)>::into(tuple!(1, "3", 5)));
+    println!("{:?}", Into::<(_,)>::into(tuple!(1)));
+    println!("{:?}", Into::<()>::into(tuple!()));
 
     // And they're the only main advantages of it.
     // For 99.99% of the time, just use a normal tuple.
