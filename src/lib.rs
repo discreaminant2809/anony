@@ -167,7 +167,84 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-/// Create an instance of an anonymous tuple
+/// Create an instance of an anonymous tuple.
+///
+/// # Practicality
+///
+/// For 99.999999999999% of use cases, just use a normal tuple. This macro's only advantages are that it supports pinning projection
+/// and it implements common traits for any arbitrary arities, not just limited up to 12-ary or 16-ary tuple. That's it!
+///
+/// # Examples
+///
+/// Like how an instance of a normal tuple is constructed, you can do the same with this macro:
+/// ```
+/// use anony::tuple;
+///
+/// let x = tuple!(123, "456");
+///
+/// assert_eq!(x.0, 123);
+/// assert_eq!(x.1, "456");
+/// ```
+/// You can move fields one by one:
+/// ```
+/// use anony::tuple;
+///
+/// let address = "123 St. SW".to_owned();
+///
+/// let o1 = tuple!("Alice".to_owned(), 28, address);
+///
+/// let name = o1.0;
+/// let age = o1.1;
+/// let address = o1.2;
+///
+/// assert_eq!(name, "Alice");
+/// assert_eq!(age, 28);
+/// assert_eq!(address, "123 St. SW");
+/// ```
+/// Pinning projection (use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, like you use `pin-project` crate).
+/// They return normal tuples
+/// ```
+/// use std::pin::pin;
+/// use std::future::Future;
+/// use std::task::Context;
+/// use std::task::Poll;
+/// use anony::tuple;
+/// use noop_waker::noop_waker;
+///
+/// let o1 = tuple!(async {
+///     let s = "10011001001";
+///     s.matches("1").count()
+/// });
+///
+/// let o1 = pin!(o1);
+/// let waker = noop_waker();
+/// let mut cx = Context::from_waker(&waker);
+///
+/// // Project to the `fut` field
+/// assert_eq!(o1.project_mut().0.poll(&mut cx), Poll::Ready(5));
+/// ```
+/// Convert to a normal tuple
+/// ```
+/// use anony::tuple;
+///
+/// let x = tuple!(1, 2);
+/// let y: (_, _) = x.into();
+/// assert_eq!(y, (1, 2));
+/// ```
+///
+/// # Implemented traits
+///
+/// This struct implements the following if all of its fields implement them:
+/// * All traits in [`std::cmp`]
+/// * [`Debug`]
+/// * [`Hash`]
+/// * [`Clone`] and [`Copy`] (the cloned instance is guaranteed to have the same type as the source)
+/// * [`Into`], since normal tuples implement [`From`] their equivalent anonymouns tuples
+/// * [`Serialize`] (`serde` feature required)
+///
+/// [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
+/// [`Debug`]: std::fmt::Debug
+/// [`Hash`]: std::hash::Hash
 #[proc_macro]
 pub fn tuple(token_stream: pm::TokenStream) -> pm::TokenStream {
     tuple::imp(token_stream)
