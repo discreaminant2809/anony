@@ -81,8 +81,7 @@ fn imp_core_part(n: usize) -> (pm2::TokenStream, Vec<Index>) {
             use ::core::fmt::Debug;
             impl<#(#t_generics: Debug),*> Debug for Tuple<#(#t_generics),*> {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                    f.debug_tuple("") // The name is concealed.
-                        .finish()
+                    f.write_str("()")
                 }
             }
 

@@ -40,7 +40,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [[example]]
-name = "astruct"
+name = "struct_tuple"
 required-features = ["serde"]
 
 [[example]]
