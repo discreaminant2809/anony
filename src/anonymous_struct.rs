@@ -185,7 +185,7 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                     // 3. The same as the 2nd point
                     // 4. We provide no operations leading to data being moved
                     unsafe {
-                        let this = self.get_unchecked_mut();
+                        let this = ::core::pin::Pin::get_unchecked_mut(self);
                         StructProjMut {
                             #(
                                 #anony_proj_name_inits: ::core::pin::Pin::new_unchecked(&mut this.#anony_proj_name_inits)
@@ -195,7 +195,7 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
                 }
 
                 fn project_ref(self: ::core::pin::Pin<&Self>) -> StructProjRef<'_, #(#anony_proj_ref_ret_generics),*> {
-                    let this = self.get_ref(); // this method is SAFE!
+                    let this = ::core::pin::Pin::get_ref(self); // this method is SAFE!
 
                     // SAFETY: see the `project_mut` method
                     unsafe {

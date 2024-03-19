@@ -19,6 +19,19 @@
 //! assert_eq!(x.items, [1, 3, 5]);
 //! ```
 //!
+//! * [`tuple!`]: creates an instance of an anonymous tuple.
+//!
+//! ```rust
+//! use anony::tuple;
+//!
+//! let items = vec![1, 3, 5];
+//!
+//! let x = tuple!("Red".to_owned(), items);
+//!
+//! assert_eq!(x.0, "Red");
+//! assert_eq!(x.1, [1, 3, 5]);
+//! ```
+//!
 //! * [`join!`] and [`join_cyclic!`]: join multiple futures. Require `future` feature.
 //!
 //! ```rust
@@ -46,7 +59,8 @@
 //!
 //! ## Features
 //!
-//! * `serde`: derives [`Serialize`] for anonymous structs. [serde] crate and its `derive` feature must exist in your crate.
+//! * `serde`: derives [`Serialize`] for anonymous structs and tuples.
+//! [serde] crate, and its `derive` feature in case of [`struct!`], must exist in your crate.
 //! * `future`: enables [`Future`] anonymous types, such as [`join!`].
 //!
 //! [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
@@ -148,7 +162,7 @@ use proc_macro2 as pm2;
 /// assert_eq!(o1.project_mut().fut.poll(&mut cx), Poll::Ready(5));
 /// ```
 ///
-/// # Derived traits
+/// # Implemented traits
 ///
 /// This struct implements the following if all of its fields are implemented them:
 /// * All traits in [`std::cmp`]
@@ -177,7 +191,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # Examples
 ///
 /// Like how an instance of a normal tuple is constructed, you can do the same with this macro:
-/// ```
+/// ```rust
 /// use anony::tuple;
 ///
 /// let x = tuple!(123, "456");
@@ -186,7 +200,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_eq!(x.1, "456");
 /// ```
 /// You can move fields one by one:
-/// ```
+/// ```rust
 /// use anony::tuple;
 ///
 /// let address = "123 St. SW".to_owned();
@@ -203,7 +217,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// ```
 /// Pinning projection (use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, like you use `pin-project` crate).
 /// They return normal tuples
-/// ```
+/// ```rust
 /// use std::pin::pin;
 /// use std::future::Future;
 /// use std::task::Context;
@@ -224,7 +238,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_eq!(o1.project_mut().0.poll(&mut cx), Poll::Ready(5));
 /// ```
 /// Convert to a normal tuple
-/// ```
+/// ```rust
 /// use anony::tuple;
 ///
 /// let x = tuple!(1, 2);
@@ -356,7 +370,7 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// Here's a basic overview of possible return types and return values:
 ///
-/// | `(F0::Output, F1::Output, ...)` | `TryJoin::Output` | "Cnntinue" value | "Break" value | Note
+/// | `(F0::Output, F1::Output, ...)` | `TryJoin::Output` | "Continue" value | "Break" value | Note
 /// |-----------|-------------|-|-|-|
 /// | `(Option<T0>, Option<T1>, ...)`  | `Option<(T0, T1, ...)>` | `Some` | `None` |
 /// | `(Result<T0, E>, Result<T1, E>, ...)`  | `Result<(T0, T1, ...), E>` | `Ok` | `Err` | All errors must exactly be the same |
@@ -402,7 +416,7 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// instead of requiring it to be inside an `async`. You will be warned if you neither
 /// `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and can be types more than just
+/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and their outputs can be more than just
 /// [`Result`] (see the first section above for the supported types).
 ///
 /// * the returned future (generally) has smaller size and is (generally) faster.
@@ -447,7 +461,7 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// Here's a basic overview of possible return types and return values:
 ///
-/// | `(F0::Output, F1::Output, ...)` | `TryJoinCyclic::Output` | "Cnntinue" value | "Break" value | Note
+/// | `(F0::Output, F1::Output, ...)` | `TryJoinCyclic::Output` | "Continue" value | "Break" value | Note
 /// |-----------|-------------|-|-|-|
 /// | `(Option<T0>, Option<T1>, ...)`  | `Option<(T0, T1, ...)>` | `Some` | `None` |
 /// | `(Result<T0, E>, Result<T1, E>, ...)`  | `Result<(T0, T1, ...), E>` | `Ok` | `Err` | All errors must exactly be the same |
@@ -493,7 +507,7 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// instead of requiring it to be inside an `async`. You will be warned if you neither
 /// `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and can be types more than just
+/// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and their outputs can be more than just
 /// [`Result`] (see the first section above for the supported types).
 ///
 /// * the returned future (generally) has smaller size and is (generally) faster.

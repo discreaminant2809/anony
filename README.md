@@ -19,6 +19,19 @@ assert_eq!(x.color, "Red");
 assert_eq!(x.items, [1, 3, 5]);
 ```
 
+* [`tuple!`]: creates an instance of an anonymous tuple.
+
+```rust
+use anony::tuple;
+
+let items = vec![1, 3, 5];
+
+let x = tuple!("Red".to_owned(), items);
+
+assert_eq!(x.0, "Red");
+assert_eq!(x.1, [1, 3, 5]);
+```
+
 * [`join!`] and [`join_cyclic!`]: join multiple futures. Require `future` feature.
 
 ```rust
@@ -42,10 +55,12 @@ assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
 
 ## Features
 
-* `serde`: derives [`Serialize`] for anonymous structs. [serde] crate and its `derive` feature must exist in your crate.
+* `serde`: derives [`Serialize`] for anonymous structs and tuples.
+[serde] crate, and its `derive` feature in case of [`struct!`], must exist in your crate.
 * `future`: enables [`Future`] anonymous types, such as [`join!`].
 
 [`struct!`]: https://docs.rs/anony/latest/anony/macro.struct.html
+[`tuple!`]: https://docs.rs/anony/latest/anony/macro.tuple.html
 [`join!`]: https://docs.rs/anony/latest/anony/macro.join.html
 [`join_cyclic!`]: https://docs.rs/anony/latest/anony/macro.join_cyclic.html
 [`try_join!`]: https://docs.rs/anony/latest/anony/macro.try_join.html
