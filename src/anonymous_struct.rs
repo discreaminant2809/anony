@@ -1,30 +1,29 @@
-use crate::{pm, pm2};
-use quote::{format_ident, quote};
+use crate::{pm, pm2, utils};
+use quote::quote;
 use syn::{parse::Parse, Expr, Ident, Token};
 
 struct Input {
-    anonymous_fields: Vec<AnonymousField>,
+    field_names: Vec<Ident>,
+    values: Vec<Expr>,
 }
 
 struct AnonymousField {
     name: Ident,
-    value: Option<Expr>,
+    value: Expr,
 }
 
 impl Parse for Input {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        std::iter::from_fn(|| {
-            let ret = (!input.is_empty()).then(|| input.parse::<AnonymousField>());
-            if let Err(e) = input.parse::<Token!(,)>() {
-                if !input.is_empty() {
-                    return Some(Err(e));
-                }
-            }
+        let (field_names, values) = input
+            .parse_terminated(AnonymousField::parse, Token![,])?
+            .into_iter()
+            .map(|field| (field.name, field.value))
+            .unzip();
 
-            ret
+        Ok(Self {
+            field_names,
+            values,
         })
-        .collect::<syn::Result<Vec<_>>>()
-        .map(|anonymous_fields| Self { anonymous_fields })
     }
 }
 
@@ -32,8 +31,12 @@ impl Parse for AnonymousField {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let name: Ident = input.parse()?;
         let value = match input.parse::<Token!(:)>() {
-            Ok(_) => Some(input.parse()?),
-            Err(_) => None,
+            Ok(_) => input.parse()?,
+            Err(_) => Expr::Path(syn::ExprPath {
+                attrs: vec![],
+                qself: None,
+                path: name.clone().into(),
+            }),
         };
 
         Ok(Self { name, value })
@@ -42,185 +45,181 @@ impl Parse for AnonymousField {
 
 pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
     let input = syn::parse::<Input>(tt)?;
-    let anonymous_fields = input.anonymous_fields;
+    Ok(imp_as_direct(&input.field_names, &input.values))
+}
 
-    #[cfg(feature = "serde")]
-    let derive_serde = quote!(#[::core::prelude::v1::derive(::serde::Serialize)]);
-    #[cfg(not(feature = "serde"))]
-    let derive_serde = quote!();
+// The code is restructured like this so that we can implement "typing" easily in the future.
+fn imp_as_direct(field_names: &[Ident], values: &[Expr]) -> pm2::TokenStream {
+    let generics = utils::i_generics("T", field_names.len());
 
-    // Handle this case since `()` matching causes `#[warn(clippy::let_unit_value)]`
-    if anonymous_fields.is_empty() {
-        return Ok(quote!({
+    let core_part = imp_core_part(&generics, field_names);
+    if field_names.is_empty() {
+        quote!({
+            #core_part
+            Struct
+        })
+    } else {
+        quote!(
+            match (#(#values),*,) { (#(#field_names),*,) => {
+                #core_part
+                Struct {
+                    #(#field_names,)*
+                }
+            }}
+        )
+    }
+}
+
+fn imp_core_part(generics: &[Ident], field_names: &[Ident]) -> pm2::TokenStream {
+    let n = generics.len();
+    let derive_serde = if cfg!(feature = "serde") {
+        quote!(
+            use ::serde::{Serialize, Serializer, ser::SerializeStruct};
+            use ::core::result::Result;
+            impl<#(#generics: Serialize),*> Serialize for Struct<#(#generics),*> {
+                fn serialize<S: Serializer>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error> {
+                    let mut serializer = Serializer::serialize_struct(serializer, "", #n)?;
+                    #(
+                        SerializeStruct::serialize_field(&mut serializer, stringify!(#field_names), &self.#field_names)?;
+                    )*
+                    SerializeStruct::end(serializer)
+                }
+            }
+        )
+    } else {
+        quote!()
+    };
+
+    // Separate case to avoid warning related to the unit type
+    if n == 0 {
+        return quote!(
+            use ::core::pin::Pin;
+            use ::core::clone::Clone;
+            use ::core::marker::Copy;
+            use ::core::marker::PhantomData;
+            use ::core::stringify;
+
             #[::core::prelude::v1::derive(
                 ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
                 ::core::hash::Hash,
-                ::core::clone::Clone, ::core::marker::Copy,
+                Clone, Copy,
             )]
-            #derive_serde
             struct Struct;
 
-            struct StructProjMut<'a>(::core::marker::PhantomData<::core::pin::Pin<&'a mut Struct>>);
+            struct StructProjRef<'a>(PhantomData<Pin<&'a Struct>>);
 
-            #[derive(Clone, Copy)]
-            struct StructProjRef<'a>(::core::marker::PhantomData<::core::pin::Pin<&'a Struct>>);
+            struct StructProjMut<'a>(PhantomData<Pin<&'a mut Struct>>);
 
-            impl Struct {
-                #[inline]
-                fn project_mut(self: ::core::pin::Pin<&mut Self>) -> StructProjMut<'_> {
-                    StructProjMut(::core::marker::PhantomData)
-                }
-
-                #[inline]
-                fn project_ref(self: ::core::pin::Pin<&mut Self>) -> StructProjRef<'_> {
-                    StructProjRef(::core::marker::PhantomData)
-                }
-            }
-
-            impl ::core::fmt::Debug for Struct {
-                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                    ::core::fmt::Formatter::write_str(f, "{}")
-                }
-            }
-
-            Struct
-        }));
-    }
-
-    // `anon` crate uses the fields' names for fields' type directly, which `#[forbid]` will kill it
-    // and uppercasing them is not really efficient so we use `T[n]` instead
-    fn t_i(i: usize) -> Ident {
-        format_ident!("T{i}")
-    }
-
-    // base iterators of everything here! Most of the below just clone from the two here!
-    let generics = (0..anonymous_fields.len()).map(t_i);
-    let names = anonymous_fields.iter().map(|field| &field.name);
-
-    let anony_proj_generics = generics.clone();
-    let anony_proj_field_decls = names.clone().enumerate().map(|(i, name)| {
-        let ty = t_i(i);
-        quote!(#name: ::core::pin::Pin<&'a mut #ty>)
-    });
-    let anony_proj_ref_generics = generics.clone();
-    let anony_proj_ref_field_decls = names.clone().enumerate().map(|(i, name)| {
-        let ty = t_i(i);
-        quote!(#name: ::core::pin::Pin<&'a #ty>)
-    });
-
-    let impl_generics_left = generics.clone();
-    let impl_generics_right = generics.clone();
-
-    let anony_proj_ret_generics = generics.clone();
-    let anony_proj_name_inits = names.clone();
-    let anony_proj_ref_ret_generics = generics.clone();
-    let anony_proj_ref_name_inits = names.clone();
-    let anony_proj_ref_clone_generics_left = generics.clone();
-    let anony_proj_ref_clone_generics_right = generics.clone();
-    let anony_proj_ref_copy_generics_left = generics.clone();
-    let anony_proj_ref_copy_generics_right = generics.clone();
-
-    let field_decls = names.clone().enumerate().map(|(i, name)| {
-        let ty = t_i(i);
-        quote!(#name: #ty)
-    });
-
-    let names_let = anonymous_fields
-        .iter()
-        .filter(|field| field.value.is_some())
-        .map(|field| &field.name);
-    let name_inits = names.clone();
-    let exprs = anonymous_fields
-        .iter()
-        .filter_map(|field| field.value.as_ref());
-
-    let debug_generics_left = generics.clone();
-    let debug_generics_right = generics.clone();
-    let debug_idents = names.clone();
-
-    Ok(quote!({
-        let (#(#names_let),*) = (#(#exprs),*);
-
-        // Open another scope so that the captured values can't access the struct
-        {
-            // deriving `Default` is useless, since we can't get the type to call the method on
-            #[::core::prelude::v1::derive(
-                ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
-                ::core::hash::Hash,
-                ::core::clone::Clone, ::core::marker::Copy,
-            )]
-            #derive_serde
-            struct Struct<#(#generics),*> {
-                #(
-                    #field_decls
-                ),*
-            }
-
-            struct StructProjMut<'a, #(#anony_proj_generics),*> {
-                #(
-                    #anony_proj_field_decls
-                ),*
-            }
-
-            struct StructProjRef<'a, #(#anony_proj_ref_generics),*> {
-                #(
-                    #anony_proj_ref_field_decls
-                ),*
-            }
-
-            impl<#(#anony_proj_ref_clone_generics_left),*> ::core::clone::Clone for StructProjRef<'_, #(#anony_proj_ref_clone_generics_right),*> {
+            impl<#(#generics),*> Clone for StructProjRef<'_, #(#generics),*> {
                 #[inline]
                 fn clone(&self) -> Self {
                     *self
                 }
             }
 
-            impl<#(#anony_proj_ref_copy_generics_left),*> ::core::marker::Copy for StructProjRef<'_, #(#anony_proj_ref_copy_generics_right),*> {}
+            impl<#(#generics),*> Copy for StructProjRef<'_, #(#generics),*> {}
 
-            impl<#(#impl_generics_left),*> Struct<#(#impl_generics_right),*> {
-                fn project_mut(self: ::core::pin::Pin<&mut Self>) -> StructProjMut<'_, #(#anony_proj_ret_generics),*> {
-                    // SAFETY: just a classic pinning projection! We guarantee that (see https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field):
-                    // 1. The anonymous struct is only Unpin if all the fields are Unpin (guaranteed by the `auto` impl)
-                    // 2. We don't provide a destructor for this type
-                    // 3. The same as the 2nd point
-                    // 4. We provide no operations leading to data being moved
-                    unsafe {
-                        let this = ::core::pin::Pin::get_unchecked_mut(self);
-                        StructProjMut {
-                            #(
-                                #anony_proj_name_inits: ::core::pin::Pin::new_unchecked(&mut this.#anony_proj_name_inits)
-                            ),*
-                        }
-                    }
+            impl<#(#generics),*> Struct<#(#generics),*> {
+                fn project_ref(self: Pin<&Self>) -> StructProjRef<'_, #(#generics),*> {
+                    StructProjRef(PhantomData)
                 }
 
-                fn project_ref(self: ::core::pin::Pin<&Self>) -> StructProjRef<'_, #(#anony_proj_ref_ret_generics),*> {
-                    let this = ::core::pin::Pin::get_ref(self); // this method is SAFE!
-
-                    // SAFETY: see the `project_mut` method
-                    unsafe {
-                        StructProjRef {
-                            #(
-                                #anony_proj_ref_name_inits: ::core::pin::Pin::new_unchecked(&this.#anony_proj_ref_name_inits)
-                            ),*
-                        }
-                    }
+                fn project_mut(self: Pin<&mut Self>) -> StructProjMut<'_, #(#generics),*> {
+                    StructProjMut(PhantomData)
                 }
             }
 
-            impl<#(#debug_generics_left: ::core::fmt::Debug),*> ::core::fmt::Debug for Struct<#(#debug_generics_right),*> {
+            use ::core::fmt::Debug;
+            impl<#(#generics: Debug),*> Debug for Struct<#(#generics),*> {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                    f.debug_struct("") // The name is concealed, but there is a single space before the opening curly bracket
-                        #(
-                            .field(::core::stringify!(#debug_idents), &self.#debug_idents)
-                        )*
-                        .finish()
+                    ::core::fmt::Formatter::write_str(f, "{}")
                 }
             }
 
-            Struct {
-                #(#name_inits),*
+            #derive_serde
+        );
+    }
+
+    quote!(
+        use ::core::pin::Pin;
+        use ::core::clone::Clone;
+        use ::core::marker::Copy;
+        use ::core::stringify;
+
+        #[::core::prelude::v1::derive(
+            ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
+            ::core::hash::Hash,
+            Clone, Copy,
+        )]
+        struct Struct<#(#generics),*> {
+            #(
+                #field_names: #generics,
+            )*
+        }
+
+        struct StructProjRef<'a, #(#generics),*> {
+            #(
+                #field_names: Pin<&'a #generics>,
+            )*
+        }
+
+        struct StructProjMut<'a, #(#generics),*> {
+            #(
+                #field_names: Pin<&'a mut #generics>,
+            )*
+        }
+
+        impl<#(#generics),*> Clone for StructProjRef<'_, #(#generics),*> {
+            #[inline]
+            fn clone(&self) -> Self {
+                *self
             }
         }
-    }))
+
+        impl<#(#generics),*> Copy for StructProjRef<'_, #(#generics),*> {}
+
+        impl<#(#generics),*> Struct<#(#generics),*> {
+            fn project_ref(self: Pin<&Self>) -> StructProjRef<'_, #(#generics),*> {
+                let this = Pin::get_ref(self); // this method is SAFE!
+
+                // SAFETY: just a classic pinning projection! We guarantee that (see https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field):
+                // 1. The anonymous struct is only Unpin if all the fields are Unpin (guaranteed by the `auto` impl)
+                // 2. We don't provide a destructor for this type
+                // 3. The same as the 2nd point
+                // 4. We provide no operations leading to data being moved
+                unsafe {
+                    StructProjRef {
+                        #(
+                            #field_names: Pin::new_unchecked(&this.#field_names),
+                        )*
+                    }
+                }
+            }
+
+            fn project_mut(self: Pin<&mut Self>) -> StructProjMut<'_, #(#generics),*> {
+                // SAFETY: see above
+                unsafe {
+                    let this = Pin::get_unchecked_mut(self);
+                    StructProjMut {
+                        #(
+                            #field_names: Pin::new_unchecked(&mut this.#field_names),
+                        )*
+                    }
+                }
+            }
+        }
+
+        use ::core::fmt::Debug;
+        impl<#(#generics: Debug),*> Debug for Struct<#(#generics),*> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                f.debug_struct("") // The name is concealed, but there is a single space before the opening curly bracket
+                    #(
+                        .field(stringify!(#field_names), &self.#field_names)
+                    )*
+                    .finish()
+            }
+        }
+
+        #derive_serde
+    )
 }

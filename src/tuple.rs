@@ -15,14 +15,12 @@ fn imp_as_direct(values: &[Expr]) -> pm2::TokenStream {
     if values.is_empty() {
         quote!({
             #core_part
-
             Tuple
         })
     } else {
         quote!(
             match (#(#values),*,) { inputs => {
                 #core_part
-
                 Tuple(#(inputs.#indices),*)
             }}
         )
@@ -38,7 +36,7 @@ fn imp_as_typing(arity: usize) -> syn::Result<pm2::TokenStream> {
 }
 
 fn imp_core_part(n: usize) -> (pm2::TokenStream, Vec<Index>) {
-    let t_generics = utils::t_generics(n);
+    let t_generics = utils::i_generics("T", n);
     let indices = utils::tuple_indices(n);
     let derive_serde = if cfg!(feature = "serde") {
         quote!(
