@@ -6,6 +6,8 @@ license = "MIT OR Apache-2.0"
 description = "Anonymous struct"
 repository = "https://github.com/Blindfolded18/anony.git"
 readme = "README.md"
+categories = ["rust-patterns", "no-std", "no-std::no-alloc"]
+keywords = ["anonymous", "struct", "join", "future"]
 
 [lib]
 proc-macro = true
