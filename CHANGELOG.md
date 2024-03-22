@@ -3,7 +3,17 @@
 ## Unreleased
 
 - "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
-- "Typing": a way to create a new instance of the same anonymous struct as the source (NOT cloning!).
+- "Typing": a way to create a new instance of the same anonymous struct as the source.
+
+## 0.5.1
+
+### Changed
+
+- `serde` feature now does not require `serde`'s `derive` feature anymore, and the struct's name is hidden.
+
+### Fixed
+
+- Fixed `project_ref` method that should receive a `Pin<&Self>` instead in struct.
 
 ## 0.5.0
 
