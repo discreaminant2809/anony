@@ -182,9 +182,9 @@ fn demonstrate_tuple() {
     println!("{serialized}");
     println!("{}", serde_json::ser::to_string(&tuple!()).unwrap());
 
-    println!("{:?}", Into::<(_, _, _)>::into(tuple!(1, "3", 5)));
-    println!("{:?}", Into::<(_,)>::into(tuple!(1)));
-    println!("{:?}", Into::<()>::into(tuple!()));
+    println!("{:?}", tuple!(1, "3", 5).into_tuple());
+    println!("{:?}", tuple!(1).into_tuple());
+    println!("{:?}", tuple!().into_tuple());
 
     // And they're the only main advantages of it.
     // For 99.99% of the time, just use a normal tuple.

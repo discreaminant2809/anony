@@ -242,7 +242,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// use anony::tuple;
 ///
 /// let x = tuple!(1, 2);
-/// let y: (_, _) = x.into();
+/// let y = x.into_tuple();
 /// assert_eq!(y, (1, 2));
 /// ```
 ///
@@ -253,7 +253,6 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// * [`Debug`]
 /// * [`Hash`]
 /// * [`Clone`] and [`Copy`] (the cloned instance is guaranteed to have the same type as the source)
-/// * [`Into`], since normal tuples implement [`From`] their equivalent anonymouns tuples
 /// * [`Serialize`] (`serde` feature required)
 ///
 /// [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html

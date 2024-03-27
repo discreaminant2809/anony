@@ -16,6 +16,7 @@
 
 - `serde` feature now does not require `serde`'s `derive` feature anymore, and the struct's name is hidden.
 - `#[must_use]` message when the future is unused
+- Method `into_tuple` instead of `From` implementation for `tuple!`
 
 ### Fixed
 
