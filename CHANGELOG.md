@@ -7,13 +7,19 @@
 
 ## 0.5.1
 
+### Added
+
+- `#[track_caller]` in case of `Result`
+- `categories` and `keywords` in `Cargo.toml`
+
 ### Changed
 
 - `serde` feature now does not require `serde`'s `derive` feature anymore, and the struct's name is hidden.
+- `#[must_use]` message when the future is unused
 
 ### Fixed
 
-- Fixed `project_ref` method that should receive a `Pin<&Self>` instead in struct.
+- Fixed `project_ref` method that should receive a `Pin<&Self>` instead in case of empty struct.
 
 ## 0.5.0
 

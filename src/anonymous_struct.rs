@@ -50,7 +50,7 @@ pub(crate) fn imp(tt: pm::TokenStream) -> syn::Result<pm2::TokenStream> {
 
 // The code is restructured like this so that we can implement "typing" easily in the future.
 fn imp_as_direct(field_names: &[Ident], values: &[Expr]) -> pm2::TokenStream {
-    let generics = utils::i_generics("T", field_names.len());
+    let generics = utils::i_idents("T", field_names.len());
 
     let core_part = imp_core_part(&generics, field_names);
     if field_names.is_empty() {

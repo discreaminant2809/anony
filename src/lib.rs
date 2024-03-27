@@ -308,7 +308,7 @@ pub fn tuple(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
-    join::imp(token_stream, false)
+    join::imp(token_stream, false, false)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
@@ -357,7 +357,7 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
-    join::imp(token_stream, true)
+    join::imp(token_stream, false, true)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
@@ -447,7 +447,7 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
-    join::imp_try(token_stream, false)
+    join::imp(token_stream, true, false)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
@@ -538,7 +538,7 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
-    join::imp_try(token_stream, true)
+    join::imp(token_stream, true, true)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

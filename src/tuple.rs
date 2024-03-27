@@ -36,7 +36,7 @@ fn imp_as_typing(arity: usize) -> syn::Result<pm2::TokenStream> {
 }
 
 fn imp_core_part(n: usize) -> (pm2::TokenStream, Vec<Index>) {
-    let t_generics = utils::i_generics("T", n);
+    let t_generics = utils::i_idents("T", n);
     let indices = utils::tuple_indices(n);
     let derive_serde = if cfg!(feature = "serde") {
         quote!(
