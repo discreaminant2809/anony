@@ -9,14 +9,14 @@
 
 ### Added
 
-- `#[track_caller]` in case of `Result`
-- `categories` and `keywords` in `Cargo.toml`
+- `#[track_caller]` in case of `Result` for `try_join(_cyclic)!`.
+- `categories` and `keywords` in `Cargo.toml`.
 
 ### Changed
 
-- `serde` feature now does not require `serde`'s `derive` feature anymore, and the struct's name is hidden.
-- `#[must_use]` message when the future is unused
-- Method `into_tuple` instead of `From` implementation for `tuple!`
+- `serde` feature now does not require `serde`'s `derive` feature anymore, and the struct's name is hidden for `r#struct!`.
+- `#[must_use]` message when the future is unused.
+- Method `into_tuple` instead of `From` implementation for `tuple!`.
 
 ### Fixed
 

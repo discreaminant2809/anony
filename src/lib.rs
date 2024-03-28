@@ -59,8 +59,7 @@
 //!
 //! ## Features
 //!
-//! * `serde`: derives [`Serialize`] for anonymous structs and tuples.
-//! [serde] crate, and its `derive` feature in case of [`struct!`], must exist in your crate.
+//! * `serde`: derives [`Serialize`] for anonymous structs and tuples. [serde] crate must exist in your crate.
 //! * `future`: enables [`Future`] anonymous types, such as [`join!`].
 //!
 //! [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
@@ -138,7 +137,7 @@ use proc_macro2 as pm2;
 /// assert_eq!(address, "123 St. SW");
 /// ```
 /// Pinning projection (use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, like you use `pin-project` crate).
-/// The struct created by `project_ref` (not `project_mut`) is implemented [`Clone`] and [`Copy`]:
+/// The struct created by `project_ref` (not `project_mut`) implements [`Clone`] and [`Copy`]:
 /// ```
 /// use std::pin::pin;
 /// use std::future::Future;
@@ -216,7 +215,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_eq!(address, "123 St. SW");
 /// ```
 /// Pinning projection (use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, like you use `pin-project` crate).
-/// They return normal tuples
+/// They return normal tuples:
 /// ```rust
 /// use std::pin::pin;
 /// use std::future::Future;
@@ -234,10 +233,10 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// let waker = noop_waker();
 /// let mut cx = Context::from_waker(&waker);
 ///
-/// // Project to the `fut` field
+/// // Project to the first field
 /// assert_eq!(o1.project_mut().0.poll(&mut cx), Poll::Ready(5));
 /// ```
-/// Convert to a normal tuple
+/// Convert to a normal tuple:
 /// ```rust
 /// use anony::tuple;
 ///
@@ -303,6 +302,32 @@ pub fn tuple(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_eq!(join!(a, b, c).await, (1, 2, 3));
 /// # });
 /// ```
+///
+/// If you want to run a future (or more) while doing something else, this macro is a help! Note that you must put the
+/// "something else" after every other futures you want to run:
+///
+/// ```rust
+/// # #[tokio::main]
+/// # async fn main() {
+/// use anony::join;
+/// use tokio::time::sleep;
+/// use std::time::Duration;
+///
+/// async fn read_db() -> String {
+///     sleep(Duration::from_secs(1)).await;
+///     "My secret".into()
+/// }
+///
+/// let (secret_value, _) = join!(read_db(), async {
+///     // Your other tasks go here, maybe asynchronous or just blocking...
+///     let a = 1;
+///     let b = 2;
+///     assert_eq!(a + b, 3);
+/// }).await;
+///
+/// assert_eq!(secret_value, "My secret");
+/// # }
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
@@ -313,6 +338,8 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 }
 
 /// Returns a future that "joins" multiple futures that will be completed concurrently, using cycling polling strategy.
+///
+/// **Usage note**: If you are not sure which one to use (between this macro with [`join!`]), just use the latter.
 ///
 /// It's output is a tuple of input futures' outputs.
 ///
@@ -351,6 +378,32 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// let c = async { 3 };
 /// assert_eq!(join_cyclic!(a, b, c).await, (1, 2, 3));
 /// # });
+/// ```
+///
+/// If you want to run a future (or more) while doing something else, this macro is a help! Note that you must put the
+/// "something else" after every other futures you want to run:
+///
+/// ```rust
+/// # #[tokio::main]
+/// # async fn main() {
+/// use anony::join_cyclic;
+/// use tokio::time::sleep;
+/// use std::time::Duration;
+///
+/// async fn read_db() -> String {
+///     sleep(Duration::from_secs(1)).await;
+///     "My secret".into()
+/// }
+///
+/// let (secret_value, _) = join_cyclic!(read_db(), async {
+///     // Your other tasks go here, maybe asynchronous or just blocking...
+///     let a = 1;
+///     let b = 2;
+///     assert_eq!(a + b, 3);
+/// }).await;
+///
+/// assert_eq!(secret_value, "My secret");
+/// # }
 /// ```
 #[proc_macro]
 #[cfg(feature = "future")]
@@ -453,6 +506,8 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 
 /// Returns a future that "joins" multiple futures that will be completed concurrently, using cycling polling strategy.
 /// May short-circuit.
+///
+/// **Usage note**: If you are not sure which one to use (between this macro with [`try_join!`]), just use the latter.
 ///
 /// It is similar to [`join_cyclic!`], except it resolves to "continue" value if all the futures resolve to "continue" value,
 /// and resolves to "break" value if one of the futures resolves to "break" value. The "continue" and the "break" value
