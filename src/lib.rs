@@ -495,6 +495,35 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_eq!(try_join!(a, b, c).await, None);
 /// # });
 /// ```
+///
+/// If you want to run a future (or more) while doing something else, this macro is a help! Note that you must put the
+/// "something else" after every other futures you want to run:
+///
+/// ```rust
+/// # use std::error::Error;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn Error>> {
+/// use anony::try_join;
+/// use tokio::time::sleep;
+/// use std::time::Duration;
+///
+/// async fn read_db() -> Result<String, Box<dyn Error>> {
+///     sleep(Duration::from_secs(1)).await;
+///     Ok("My secret".into())
+/// }
+///
+/// let (secret_value, _) = try_join!(read_db(), async {
+///     // Your other tasks go here, maybe asynchronous or just blocking...
+///     let a = 1;
+///     let b = 2;
+///     assert_eq!(a + b, 3);
+///     Ok(())
+/// }).await?;
+///
+/// assert_eq!(secret_value, "My secret");
+/// # Ok(())
+/// # }
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
@@ -587,6 +616,35 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// let c = async { Some("7") };
 /// assert_eq!(try_join_cyclic!(a, b, c).await, None);
 /// # });
+/// ```
+///
+/// If you want to run a future (or more) while doing something else, this macro is a help! Note that you must put the
+/// "something else" after every other futures you want to run:
+///
+/// ```rust
+/// # use std::error::Error;
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn Error>> {
+/// use anony::try_join_cyclic;
+/// use tokio::time::sleep;
+/// use std::time::Duration;
+///
+/// async fn read_db() -> Result<String, Box<dyn Error>> {
+///     sleep(Duration::from_secs(1)).await;
+///     Ok("My secret".into())
+/// }
+///
+/// let (secret_value, _) = try_join_cyclic!(read_db(), async {
+///     // Your other tasks go here, maybe asynchronous or just blocking...
+///     let a = 1;
+///     let b = 2;
+///     assert_eq!(a + b, 3);
+///     Ok(())
+/// }).await?;
+///
+/// assert_eq!(secret_value, "My secret");
+/// # Ok(())
+/// # }
 /// ```
 #[proc_macro]
 #[cfg(feature = "future")]
