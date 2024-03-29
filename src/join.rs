@@ -383,8 +383,9 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
 
     quote!(match (#(#futs,)*) { futs => {
         #neccessary_import
-        #try_trait_and_import
         use ::core::hint::unreachable_unchecked;
+
+        #try_trait_and_import
 
         // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
         // #[pin_project]
