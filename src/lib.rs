@@ -144,7 +144,7 @@ use proc_macro2 as pm2;
 /// use std::task::Context;
 /// use std::task::Poll;
 /// use anony::r#struct;
-/// use noop_waker::noop_waker;
+/// use futures::task::noop_waker;
 ///
 /// let o1 = r#struct! {
 ///     fut: async {
@@ -222,7 +222,7 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// use std::task::Context;
 /// use std::task::Poll;
 /// use anony::tuple;
-/// use noop_waker::noop_waker;
+/// use futures::task::noop_waker;
 ///
 /// let o1 = tuple!(async {
 ///     let s = "10011001001";

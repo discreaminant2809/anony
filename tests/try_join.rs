@@ -9,8 +9,10 @@ use std::{
     time::Duration,
 };
 
-use futures::{task::noop_waker_ref, FutureExt};
-use noop_waker::noop_waker;
+use futures::{
+    task::{noop_waker, noop_waker_ref},
+    FutureExt,
+};
 use tokio::{select, time::sleep};
 
 async fn assert_sleep_correct_dur(

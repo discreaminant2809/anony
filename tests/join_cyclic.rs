@@ -9,8 +9,7 @@ use std::{
 };
 
 use anony::join_cyclic;
-use futures::task::noop_waker_ref;
-use noop_waker::noop_waker;
+use futures::task::{noop_waker, noop_waker_ref};
 use tokio::{select, spawn, task::spawn_blocking, time::sleep};
 
 async fn assert_sleep_correct_dur(
