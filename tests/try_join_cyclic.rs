@@ -242,7 +242,7 @@ fn should_poll_all_and_in_correct_ord() {
     thread_local! {
         // This number will keep incrementing for each controlled future being polled
         // We use it to test whether the polling routine is in the correct sequence
-        static POLL_NUMBER: Cell<usize> = Cell::new(0);
+        static POLL_NUMBER: Cell<usize> = const { Cell::new(0) };
     }
 
     #[derive(Clone, Default)]
