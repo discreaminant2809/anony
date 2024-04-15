@@ -62,6 +62,10 @@
 //! * `serde`: derives [`Serialize`] for anonymous structs and tuples. [serde] crate must exist in your crate.
 //! * `future`: enables [`Future`] anonymous types, such as [`join!`].
 //!
+//! ## Disclaimer
+//!
+//! All macros in this crate are 100% hygienic.
+//!
 //! [`Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
 //! [`Future`]: std::future::Future
 //! [serde]: https://docs.rs/serde/latest/serde/index.html

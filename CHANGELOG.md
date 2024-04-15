@@ -1,9 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.5.2
 
-- "Functional traits": quickly create an instance of a struct implementing a trait having exactly one required method.
-- "Typing": a way to create a new instance of the same anonymous struct as the source.
+### Added
+
+- implement `Default` for types created by `r#struct!` and `tuple!`.
+
+### Changed
+
+- `(try_)join_cyclic`'s internals.
+
+### Fixed
+
+- Hygience fix.
 
 ## 0.5.1
 

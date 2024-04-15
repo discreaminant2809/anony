@@ -21,9 +21,9 @@ pub(crate) fn imp(
 }
 
 macro_rules! cyclical_poll {
-    ($fut_count:ident, $($do_sth_w_done:tt)*) => {
+    ($fut_count:ident, $count_ty:ident, $($do_sth_w_done:tt)*) => {
         quote!(
-            const COUNT: usize = #$fut_count;
+            const COUNT: #$count_ty = #$fut_count;
             let mut done = true;
             let mut to_run = COUNT;
             let mut to_skip = ::core::mem::replace(
@@ -128,19 +128,19 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
     let generics = utils::i_idents('F', futs.len());
     let maybe_done_force_take_output = maybe_done_force_take_output(quote!(F::Output));
     let maybe_done_vars = utils::i_idents("maybe_done", generics.len());
-    let (skip_next_time_ty, skip_next_time_var, skip_next_time_init) = if is_cyclic {
-        (quote!(usize), quote!(skip_next_time), quote!(0))
-    } else {
-        (quote!(), quote!(), quote!())
-    };
+    let [skip_next_time_ty, skip_next_time_var, skip_next_time_init] =
+        skip_next_time(is_cyclic, futs.len() as _);
     let take_output = take_output(
         if is_cyclic { "join_cyclic" } else { "join" },
         &maybe_done_vars,
         quote!(),
     );
-    let fut_count = futs.len();
+    let fut_count = pm2::Literal::usize_unsuffixed(futs.len());
     let polling_strategy = if is_cyclic {
-        cyclical_poll!(fut_count, done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx);)
+        cyclical_poll!(
+            fut_count, skip_next_time_ty,
+            done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx);
+        )
     } else {
         quote!(
             #(MaybeDone::poll(Pin::new_unchecked(#maybe_done_vars), cx))&*
@@ -322,11 +322,8 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
     let maybe_done_force_take_output =
         maybe_done_force_take_output(quote!(<F::Output as Try>::Output));
     let maybe_done_vars = utils::i_idents("maybe_done", generics.len());
-    let (skip_next_time_ty, skip_next_time_var, skip_next_time_init) = if is_cyclic {
-        (quote!(usize), quote!(skip_next_time), quote!(0))
-    } else {
-        (quote!(), quote!(), quote!())
-    };
+    let [skip_next_time_ty, skip_next_time_var, skip_next_time_init] =
+        skip_next_time(is_cyclic, futs.len() as _);
     let take_output = take_output(
         if is_cyclic {
             "try_join_cyclic"
@@ -336,10 +333,10 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
         &maybe_done_vars,
         quote!(Try::from_output),
     );
-    let fut_count = futs.len();
+    let fut_count = pm2::Literal::usize_unsuffixed(futs.len());
     let polling_strategy = if is_cyclic {
         cyclical_poll!(
-            fut_count,
+            fut_count, skip_next_time_ty,
             match MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx) {
                 ControlFlow::Continue(ready) => done &= ready,
                 ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
@@ -649,6 +646,10 @@ fn neccessary_import() -> pm2::TokenStream {
         use ::core::future::Future;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
+        // All primitive types in Rust are actually NOT keywords!
+        // They can be polluted by something like `struct usize;`, which is actually permitted but causes errors
+        // See more:
+        use ::core::primitive::bool;
     )
 }
 
@@ -668,4 +669,24 @@ fn future_impl(
             }
         }
     )
+}
+
+fn skip_next_time(is_cyclic: bool, n: u128) -> [pm2::TokenStream; 3] {
+    if !is_cyclic {
+        return Default::default();
+    }
+
+    let skip_next_time_ty = if n <= u8::MAX as _ {
+        quote!(::core::primitive::u8)
+    } else if n <= u16::MAX as _ {
+        quote!(::core::primitive::u16)
+    } else if n <= u32::MAX as _ {
+        quote!(::core::primitive::u32)
+    } else if n <= u64::MAX as _ {
+        quote!(::core::primitive::u64)
+    } else {
+        quote!(::core::primitive::u128)
+    };
+
+    [skip_next_time_ty, quote!(skip_next_time), quote!(0)]
 }

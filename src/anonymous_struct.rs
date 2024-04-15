@@ -102,6 +102,7 @@ fn imp_core_part(generics: &[Ident], field_names: &[Ident]) -> pm2::TokenStream 
             #[::core::prelude::v1::derive(
                 ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
                 ::core::hash::Hash,
+                ::core::default::Default,
                 Clone, Copy,
             )]
             struct Struct;
@@ -149,6 +150,7 @@ fn imp_core_part(generics: &[Ident], field_names: &[Ident]) -> pm2::TokenStream 
         #[::core::prelude::v1::derive(
             ::core::cmp::PartialEq, ::core::cmp::Eq, ::core::cmp::PartialOrd, ::core::cmp::Ord,
             ::core::hash::Hash,
+            ::core::default::Default,
             Clone, Copy,
         )]
         struct Struct<#(#generics),*> {

@@ -58,6 +58,10 @@ assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
 * `serde`: derives [`Serialize`] for anonymous structs and tuples. [serde] crate must exist in your crate.
 * `future`: enables [`Future`] anonymous types, such as [`join!`].
 
+## Disclaimer
+
+All macros in this crate are 100% hygienic.
+
 [`struct!`]: https://docs.rs/anony/latest/anony/macro.struct.html
 [`tuple!`]: https://docs.rs/anony/latest/anony/macro.tuple.html
 [`join!`]: https://docs.rs/anony/latest/anony/macro.join.html
