@@ -162,11 +162,13 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             #take_output
         ),
     );
+    let unreachable_unchecked_fn = unreachable_unchecked_fn();
 
     quote!(match (#(#futs,)*) { futs => {
         #neccessary_import
         use ::core::option::Option::{self, Some, None}; // the `neccessary_import` hasn't imported this
-        use ::core::hint::unreachable_unchecked;
+
+        #unreachable_unchecked_fn
 
         // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
         // #[pin_project]
@@ -377,12 +379,14 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             #take_output
         ),
     );
+    let unreachable_unchecked_fn = unreachable_unchecked_fn();
 
     quote!(match (#(#futs,)*) { futs => {
         #neccessary_import
-        use ::core::hint::unreachable_unchecked;
 
         #try_trait_and_import
+
+        #unreachable_unchecked_fn
 
         // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
         // #[pin_project]
@@ -689,4 +693,19 @@ fn skip_next_time(is_cyclic: bool, n: u128) -> [pm2::TokenStream; 3] {
     };
 
     [skip_next_time_ty, quote!(skip_next_time), quote!(0)]
+}
+
+fn unreachable_unchecked_fn() -> pm2::TokenStream {
+    let body = if cfg!(debug_assertions) {
+        quote!(::core::unreachable!(
+            "`unreachable_unchecked` reached at runtime"
+        ))
+    } else {
+        quote!(unsafe { ::core::hint::unreachable_unchecked() })
+    };
+
+    quote!(
+        #[inline(always)]
+        unsafe fn unreachable_unchecked() -> ! { #body }
+    )
 }
