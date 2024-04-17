@@ -20,39 +20,6 @@ pub(crate) fn imp(
     }
 }
 
-macro_rules! cyclical_poll {
-    ($fut_count:ident, $count_ty:ident, $($do_sth_w_done:tt)*) => {
-        quote!(
-            const COUNT: #$count_ty = #$fut_count;
-            let mut done = true;
-            let mut to_run = COUNT;
-            let mut to_skip = ::core::mem::replace(
-                skip_next_time,
-                // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
-                // so `clippy::modulo_one` won't be triggered
-                (*skip_next_time + 1) % COUNT
-            );
-
-            loop {
-                #(
-                    if to_skip > 0 {
-                        to_skip -= 1;
-                    } else {
-                        // We alter the logic a bit, since we guarantee that `to_run` starts with a number > 1
-                        // By doing this, we reduce the number of checks
-                        $($do_sth_w_done)*
-
-                        if to_run <= 1 { // if we are the last one...
-                            break done;
-                        }
-                        to_run -= 1;
-                    }
-                )*
-            }
-        )
-    };
-}
-
 fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
     let join_ty = if is_cyclic {
         quote!(JoinCyclic)
@@ -137,9 +104,30 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
     );
     let fut_count = pm2::Literal::usize_unsuffixed(futs.len());
     let polling_strategy = if is_cyclic {
-        cyclical_poll!(
-            fut_count, skip_next_time_ty,
-            done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx);
+        let indices = (0..futs.len()).map(syn::Index::from);
+        quote!(
+            const COUNT: #skip_next_time_ty = #fut_count;
+            let mut done = true;
+            let to_skip = ::core::mem::replace(
+                skip_next_time,
+                // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
+                // so `clippy::modulo_one` won't be triggered
+                (*skip_next_time + 1) % COUNT
+            );
+
+            use ::core::iter::Iterator;
+            // We use `for_each` since `chain` has a more efficient implementation for `for_each`,
+            // making it more efficient than for loop.
+            Iterator::for_each(
+                Iterator::chain(to_skip..COUNT, 0..to_skip),
+                |i| match i {
+                    #(#indices => done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx),)*
+                    // SAFETY: we will never reach it
+                    _ => unsafe { unreachable_unchecked() },
+                }
+            );
+
+            done
         )
     } else {
         quote!(
@@ -337,12 +325,36 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
     );
     let fut_count = pm2::Literal::usize_unsuffixed(futs.len());
     let polling_strategy = if is_cyclic {
-        cyclical_poll!(
-            fut_count, skip_next_time_ty,
-            match MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx) {
-                ControlFlow::Continue(ready) => done &= ready,
-                ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
+        let indices = (0..futs.len()).map(syn::Index::from);
+        quote!(
+            const COUNT: #skip_next_time_ty = #fut_count;
+            let mut done = true;
+            let to_skip = ::core::mem::replace(
+                skip_next_time,
+                // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
+                // so `clippy::modulo_one` won't be triggered
+                (*skip_next_time + 1) % COUNT
+            );
+
+            use ::core::iter::Iterator;
+            // We use `for_each` since `chain` has a more efficient implementation for `for_each`,
+            // making it more efficient than for loop.
+            if let ControlFlow::Break(r) = Iterator::try_for_each(
+                &mut Iterator::chain(to_skip..COUNT, 0..to_skip),
+                |i| {
+                    match i {
+                        #(#indices => done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx)?,)*
+                        // SAFETY: we will never reach it
+                        _ => unsafe { unreachable_unchecked() },
+                    }
+
+                    ControlFlow::Continue(())
+                }
+            ) {
+                return Poll::Ready(Try::from_residual(r));
             }
+
+            done
         )
     } else {
         quote!(
