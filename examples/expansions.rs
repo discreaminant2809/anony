@@ -1,3 +1,5 @@
+// Assume `debug_assertions` is enabled.
+
 #![allow(clippy::match_single_binding, unused)]
 
 fn _struct_expansion() {
@@ -379,10 +381,15 @@ fn _join_expansion() {
     let _fut_n = match (async { 134 }, async { "144" }, std::future::pending::<()>()) {
         futs => {
             use ::core::future::Future;
-            use ::core::hint::unreachable_unchecked;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
+            use ::core::primitive::bool;
             use ::core::task::{Context, Poll};
+
+            #[inline(always)]
+            unsafe fn unreachable_unchecked() -> ! {
+                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
+            }
 
             enum MaybeDone<F: Future> {
                 Pending(F),
@@ -527,10 +534,15 @@ fn _join_cyclic_expansion() {
     let _fut_n = match (async { 134 }, async { "144" }, std::future::pending::<()>()) {
         futs => {
             use ::core::future::Future;
-            use ::core::hint::unreachable_unchecked;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
+            use ::core::primitive::bool;
             use ::core::task::{Context, Poll};
+
+            #[inline(always)]
+            unsafe fn unreachable_unchecked() -> ! {
+                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
+            }
 
             enum MaybeDone<F: Future> {
                 Pending(F),
@@ -566,7 +578,12 @@ fn _join_cyclic_expansion() {
 
             #[must_use = "unlike other implementations, this one returns a `Future` that should be explicitly `.await`ed or polled"]
             enum JoinCyclic<F0: Future, F1: Future, F2: Future> {
-                Inner(MaybeDone<F0>, MaybeDone<F1>, MaybeDone<F2>, usize),
+                Inner(
+                    MaybeDone<F0>,
+                    MaybeDone<F1>,
+                    MaybeDone<F2>,
+                    ::core::primitive::u8,
+                ),
             }
 
             impl<F0: Future, F1: Future, F2: Future> Future for JoinCyclic<F0, F1, F2> {
@@ -576,43 +593,32 @@ fn _join_cyclic_expansion() {
                         unsafe { Pin::get_unchecked_mut(self) };
 
                     if !unsafe {
-                        const COUNT: usize = 3usize;
+                        const COUNT: ::core::primitive::u8 = 3;
                         let mut done = true;
-                        let mut to_run = COUNT;
-                        let mut to_skip =
+                        let to_skip =
                             ::core::mem::replace(skip_next_time, (*skip_next_time + 1) % COUNT);
 
-                        loop {
-                            if to_skip > 0 {
-                                to_skip -= 1;
-                            } else {
-                                done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx);
-                                if to_run <= 1 {
-                                    break done;
+                        use ::core::iter::Iterator;
+                        Iterator::for_each(
+                            Iterator::chain(to_skip..COUNT, 0..to_skip),
+                            |i| match i {
+                                0 => {
+                                    done &=
+                                        MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx)
                                 }
-                                to_run -= 1;
-                            }
+                                1 => {
+                                    done &=
+                                        MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx)
+                                }
+                                2 => {
+                                    done &=
+                                        MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx)
+                                }
+                                _ => unsafe { unreachable_unchecked() },
+                            },
+                        );
 
-                            if to_skip > 0 {
-                                to_skip -= 1;
-                            } else {
-                                done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx);
-                                if to_run <= 1 {
-                                    break done;
-                                }
-                                to_run -= 1;
-                            }
-
-                            if to_skip > 0 {
-                                to_skip -= 1;
-                            } else {
-                                done &= MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx);
-                                if to_run <= 1 {
-                                    break done;
-                                }
-                                to_run -= 1;
-                            }
-                        }
+                        done
                     } {
                         return Poll::Pending;
                     }
@@ -645,7 +651,7 @@ fn _join_cyclic_expansion() {
     };
 }
 
-// This function exists since an empty
+// This function exists since an empty `try_join(_cyclic)` may cause an error.
 fn expect_output(_f: impl std::future::Future<Output = Option<()>>) {}
 
 // Separate it so that you can focus on the main logic, since all `try_join(_cyclic)` expansions here have this
@@ -848,14 +854,19 @@ fn _try_join_expansion() {
     let _fut_3 = match (async { Some(()) }, async { Some(()) }, async { Some(()) }) {
         futs => {
             use ::core::future::Future;
-            use ::core::hint::unreachable_unchecked;
             use ::core::ops::ControlFlow;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
+            use ::core::primitive::bool;
             use ::core::result::Result::{self, Err, Ok};
             use ::core::task::{Context, Poll};
 
             try_trait!();
+
+            #[inline(always)]
+            unsafe fn unreachable_unchecked() -> ! {
+                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
+            }
 
             enum MaybeDone<F: Future>
             where
@@ -894,6 +905,7 @@ fn _try_join_expansion() {
                         }
                     }
                 }
+
                 unsafe fn force_take_output(
                     self: Pin<&mut Self>,
                 ) -> Option<<F::Output as Try>::Output> {
@@ -992,6 +1004,7 @@ fn _try_join_expansion() {
     };
 }
 
+#[allow(clippy::blocks_in_conditions)]
 fn _try_join_cyclic_expansion() {
     // No future at all
     let fut_0 = anony::try_join_cyclic!();
@@ -1080,14 +1093,19 @@ fn _try_join_cyclic_expansion() {
     let _fut_3 = match (async { Some(()) }, async { Some(()) }, async { Some(()) }) {
         futs => {
             use ::core::future::Future;
-            use ::core::hint::unreachable_unchecked;
             use ::core::ops::ControlFlow;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
+            use ::core::primitive::bool;
             use ::core::result::Result::{self, Err, Ok};
             use ::core::task::{Context, Poll};
 
             try_trait!();
+
+            #[inline(always)]
+            unsafe fn unreachable_unchecked() -> ! {
+                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
+            }
 
             enum MaybeDone<F: Future>
             where
@@ -1126,6 +1144,7 @@ fn _try_join_cyclic_expansion() {
                         }
                     }
                 }
+
                 unsafe fn force_take_output(
                     self: Pin<&mut Self>,
                 ) -> Option<<F::Output as Try>::Output> {
@@ -1152,7 +1171,12 @@ fn _try_join_cyclic_expansion() {
                 F1::Output: Try<Residual = R>,
                 F2::Output: Try<Residual = R>,
             {
-                Inner(MaybeDone<F0>, MaybeDone<F1>, MaybeDone<F2>, usize),
+                Inner(
+                    MaybeDone<F0>,
+                    MaybeDone<F1>,
+                    MaybeDone<F2>,
+                    ::core::primitive::u8,
+                ),
             }
 
             impl<
@@ -1176,58 +1200,44 @@ fn _try_join_cyclic_expansion() {
                         unsafe { Pin::get_unchecked_mut(self) };
 
                     if !unsafe {
-                        const COUNT: usize = 3usize;
+                        const COUNT: ::core::primitive::u8 = 3;
                         let mut done = true;
-                        let mut to_run = COUNT;
-                        let mut to_skip =
+                        let to_skip =
                             ::core::mem::replace(skip_next_time, (*skip_next_time + 1) % COUNT);
 
-                        loop {
-                            if to_skip > 0 {
-                                to_skip -= 1;
-                            } else {
-                                match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx) {
-                                    ControlFlow::Continue(ready) => done &= ready,
-                                    ControlFlow::Break(r) => {
-                                        return Poll::Ready(Try::from_residual(r))
+                        use ::core::iter::Iterator;
+                        if let ControlFlow::Break(r) = Iterator::try_for_each(
+                            &mut Iterator::chain(to_skip..COUNT, 0..to_skip),
+                            |i| {
+                                match i {
+                                    0 => {
+                                        done &= MaybeDone::poll(
+                                            Pin::new_unchecked(&mut *maybe_done0),
+                                            cx,
+                                        )?
                                     }
+                                    1 => {
+                                        done &= MaybeDone::poll(
+                                            Pin::new_unchecked(&mut *maybe_done1),
+                                            cx,
+                                        )?
+                                    }
+                                    2 => {
+                                        done &= MaybeDone::poll(
+                                            Pin::new_unchecked(&mut *maybe_done2),
+                                            cx,
+                                        )?
+                                    }
+                                    _ => unsafe { unreachable_unchecked() },
                                 }
-                                if to_run <= 1 {
-                                    break done;
-                                }
-                                to_run -= 1;
-                            }
 
-                            if to_skip > 0 {
-                                to_skip -= 1;
-                            } else {
-                                match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx) {
-                                    ControlFlow::Continue(ready) => done &= ready,
-                                    ControlFlow::Break(r) => {
-                                        return Poll::Ready(Try::from_residual(r))
-                                    }
-                                }
-                                if to_run <= 1 {
-                                    break done;
-                                }
-                                to_run -= 1;
-                            }
-
-                            if to_skip > 0 {
-                                to_skip -= 1;
-                            } else {
-                                match MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx) {
-                                    ControlFlow::Continue(ready) => done &= ready,
-                                    ControlFlow::Break(r) => {
-                                        return Poll::Ready(Try::from_residual(r))
-                                    }
-                                }
-                                if to_run <= 1 {
-                                    break done;
-                                }
-                                to_run -= 1;
-                            }
+                                ControlFlow::Continue(())
+                            },
+                        ) {
+                            return Poll::Ready(Try::from_residual(r));
                         }
+
+                        done
                     } {
                         return Poll::Pending;
                     }
