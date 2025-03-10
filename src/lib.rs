@@ -285,8 +285,8 @@ pub fn tuple(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # Possible differences from other implementations
 ///
 /// * `join!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
-/// instead of requiring it to be inside an `async`. You will be warned if you neither
-/// `.await`, [`poll`](std::future::Future::poll), nor return it.
+///   instead of requiring it to be inside an `async`. You will be warned if you neither
+///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
 /// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture).
 ///
@@ -362,8 +362,8 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # Possible differences from other implementations
 ///
 /// * `join_cyclic!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
-/// instead of requiring it to be inside an `async`. You will be warned if you neither
-/// `.await`, [`poll`](std::future::Future::poll), nor return it.
+///   instead of requiring it to be inside an `async`. You will be warned if you neither
+///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
 /// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture).
 ///
@@ -469,11 +469,11 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # Possible differences from other implementations
 ///
 /// * `try_join!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
-/// instead of requiring it to be inside an `async`. You will be warned if you neither
-/// `.await`, [`poll`](std::future::Future::poll), nor return it.
+///   instead of requiring it to be inside an `async`. You will be warned if you neither
+///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
 /// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and their outputs can be more than just
-/// [`Result`] (see the first section above for the supported types).
+///   [`Result`] (see the first section above for the supported types).
 ///
 /// * the returned future (generally) has smaller size and is (generally) faster.
 ///
@@ -591,11 +591,11 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # Possible differences from other implementations
 ///
 /// * `try_join_cyclic!` returns an instance of an anonymous type implemented [`Future`](std::future::Future)
-/// instead of requiring it to be inside an `async`. You will be warned if you neither
-/// `.await`, [`poll`](std::future::Future::poll), nor return it.
+///   instead of requiring it to be inside an `async`. You will be warned if you neither
+///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
 /// * input futures are required to implement [`IntoFuture`](std::future::IntoFuture), and their outputs can be more than just
-/// [`Result`] (see the first section above for the supported types).
+///   [`Result`] (see the first section above for the supported types).
 ///
 /// * the returned future (generally) has smaller size and is (generally) faster.
 ///

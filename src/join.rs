@@ -1,5 +1,3 @@
-#![cfg(feature = "future")]
-
 use crate::utils::TupleLikeTypeInput;
 use crate::{pm2, utils};
 use quote::{quote, ToTokens};
