@@ -4,12 +4,13 @@ version = "0.5.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Anonymous struct"
-repository = "https://github.com/Blindfolded18/anony.git"
+repository = "https://github.com/discreaminant2809/anony.git"
 readme = "README.md"
 categories = ["rust-patterns", "no-std", "no-std::no-alloc"]
 keywords = ["anonymous", "struct", "join", "future", "try_join"]
 
 [lib]
+path = "src/lib.rs" # So that `cargo readme` works.
 proc-macro = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

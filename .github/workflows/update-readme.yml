@@ -1,0 +1,12 @@
+name: Update `README.md` before pushing
+on: push
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo install cargo-readme
+      - run: cargo readme > README.md
+      - run: git add README.md
+      - run: git commit --amend --no-edit
+      - run: git push --force-with-lease
