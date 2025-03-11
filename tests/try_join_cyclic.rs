@@ -51,40 +51,41 @@ async fn assert_sleep_correct_dur(
 async fn join_duration_option() {
     async fn no_short_circuit() {
         let fut = anony::try_join_cyclic!(
-            sleep(Duration::from_secs(3)).map(Some),
-            sleep(Duration::from_secs(3)).map(Some),
+            sleep(Duration::from_millis(300)).map(Some),
+            sleep(Duration::from_millis(300)).map(Some),
             // This's the longest, and no one return `None`
-            // so the whole future should be ended in (approximately) 4 seconds
+            // so the whole future should be ended in (approximately) 0.04 seconds.
             async {
-                sleep(Duration::from_secs(2)).await;
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
                 Some(())
             },
-            sleep(Duration::from_secs(1)).map(Some),
+            sleep(Duration::from_millis(100)).map(Some),
         );
 
-        assert_sleep_correct_dur(fut, 4.0, 0.1).await;
+        assert_sleep_correct_dur(fut, 0.4, 0.01).await;
     }
 
     async fn short_circuit() {
         let fut = anony::try_join_cyclic!(
-            sleep(Duration::from_secs(3)).map(Some),
-            sleep(Duration::from_secs(3)).map(Some),
-            // The whole future short-circuited since this branch return `None`
+            sleep(Duration::from_millis(300)).map(Some),
+            sleep(Duration::from_millis(300)).map(Some),
+            // The whole future short-circuited since this branch return `None`.
+            // The whole future should be ended in (approximately) 0.04 seconds.
             async {
-                sleep(Duration::from_secs_f64(2.5)).await;
+                sleep(Duration::from_millis(250)).await;
                 None::<()>
             },
             // ...even though this's the longest
             async {
-                sleep(Duration::from_secs(2)).await;
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
                 Some(())
             },
-            sleep(Duration::from_secs(1)).map(Some),
+            sleep(Duration::from_millis(100)).map(Some),
         );
 
-        assert_sleep_correct_dur(fut, 2.5, 0.1).await;
+        assert_sleep_correct_dur(fut, 0.25, 0.01).await;
     }
 
     futures::join!(no_short_circuit(), short_circuit());
@@ -94,40 +95,40 @@ async fn join_duration_option() {
 async fn join_duration_result() {
     async fn no_short_circuit() {
         let fut = anony::try_join_cyclic!(
-            sleep(Duration::from_secs(3)).map(Ok::<_, &str>),
-            sleep(Duration::from_secs(3)).map(Ok),
+            sleep(Duration::from_millis(300)).map(Ok::<_, &str>),
+            sleep(Duration::from_millis(300)).map(Ok),
             // This's the longest, and no one return `None`
             // so the whole future should be ended in (approximately) 4 seconds
             async {
-                sleep(Duration::from_secs(2)).await;
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
                 Ok(())
             },
-            sleep(Duration::from_secs(1)).map(Ok),
+            sleep(Duration::from_millis(100)).map(Ok),
         );
 
-        assert_sleep_correct_dur(fut, 4.0, 0.1).await;
+        assert_sleep_correct_dur(fut, 0.4, 0.01).await;
     }
 
     async fn short_circuit() {
         let fut = anony::try_join_cyclic!(
-            sleep(Duration::from_secs(3)).map(Ok),
-            sleep(Duration::from_secs(3)).map(Ok),
-            // The whole future short-circuited since this branch return `None`
+            sleep(Duration::from_millis(300)).map(Ok),
+            sleep(Duration::from_millis(300)).map(Ok),
+            // The whole future short-circuited since this branch return `Err`
             async {
-                sleep(Duration::from_secs_f64(2.5)).await;
+                sleep(Duration::from_millis(250)).await;
                 Err::<(), _>("123")
             },
             // ...even though this's the longest
             async {
-                sleep(Duration::from_secs(2)).await;
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
                 Ok(())
             },
-            sleep(Duration::from_secs(1)).map(Ok),
+            sleep(Duration::from_millis(100)).map(Ok),
         );
 
-        assert_sleep_correct_dur(fut, 2.5, 0.1).await;
+        assert_sleep_correct_dur(fut, 0.25, 0.01).await;
     }
 
     futures::join!(no_short_circuit(), short_circuit());
@@ -137,40 +138,40 @@ async fn join_duration_result() {
 async fn join_duration_control_flow() {
     async fn no_short_circuit() {
         let fut = anony::try_join_cyclic!(
-            sleep(Duration::from_secs(3)).map(ControlFlow::<i32>::Continue),
-            sleep(Duration::from_secs(3)).map(ControlFlow::Continue),
-            // This's the longest, and no one return `None`
+            sleep(Duration::from_millis(300)).map(ControlFlow::<i32>::Continue),
+            sleep(Duration::from_millis(300)).map(ControlFlow::Continue),
+            // This's the longest, and no one return `Break`
             // so the whole future should be ended in (approximately) 4 seconds
             async {
-                sleep(Duration::from_secs(2)).await;
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
                 ControlFlow::Continue(())
             },
-            sleep(Duration::from_secs(1)).map(ControlFlow::Continue),
+            sleep(Duration::from_millis(100)).map(ControlFlow::Continue),
         );
 
-        assert_sleep_correct_dur(fut, 4.0, 0.1).await;
+        assert_sleep_correct_dur(fut, 0.4, 0.01).await;
     }
 
     async fn short_circuit() {
         let fut = anony::try_join_cyclic!(
-            sleep(Duration::from_secs(3)).map(ControlFlow::Continue),
-            sleep(Duration::from_secs(3)).map(ControlFlow::Continue),
+            sleep(Duration::from_millis(300)).map(ControlFlow::Continue),
+            sleep(Duration::from_millis(300)).map(ControlFlow::Continue),
             // The whole future short-circuited since this branch return `Break`
             async {
-                sleep(Duration::from_secs_f64(2.5)).await;
+                sleep(Duration::from_millis(250)).await;
                 ControlFlow::<_, ()>::Break(())
             },
             // ...even though this's the longest
             async {
-                sleep(Duration::from_secs(2)).await;
-                sleep(Duration::from_secs(2)).await;
+                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
                 ControlFlow::Continue(())
             },
-            sleep(Duration::from_secs(1)).map(ControlFlow::Continue),
+            sleep(Duration::from_millis(100)).map(ControlFlow::Continue),
         );
 
-        assert_sleep_correct_dur(fut, 2.5, 0.1).await;
+        assert_sleep_correct_dur(fut, 0.25, 0.01).await;
     }
 
     futures::join!(no_short_circuit(), short_circuit());

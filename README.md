@@ -10,12 +10,12 @@ use anony::r#struct;
 let items = vec![1, 3, 5];
 
 let x = r#struct! {
-    color: "Red".to_owned(),
+    name: "discreaminant".to_owned(),
     // move the `items` variable to the struct
-    items
+    items,
 };
 
-assert_eq!(x.color, "Red");
+assert_eq!(x.name, "discreaminant");
 assert_eq!(x.items, [1, 3, 5]);
 ```
 
@@ -26,27 +26,31 @@ use anony::tuple;
 
 let items = vec![1, 3, 5];
 
-let x = tuple!("Red".to_owned(), items);
+let x = tuple!("discreaminant".to_owned(), items);
 
-assert_eq!(x.0, "Red");
+assert_eq!(x.0, "discreaminant");
 assert_eq!(x.1, [1, 3, 5]);
 ```
 
 * [`join!`] and [`join_cyclic!`]: join multiple futures. Require `future` feature.
 
 ```rust
+# futures::executor::block_on(async {
 use anony::join;
 
 assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
+# });
 ```
 
 * [`try_join!`] and [`try_join_cyclic!`]: join multiple futures and short-circuit on "break" value. Require `future` feature.
 
 ```rust
+# futures::executor::block_on(async {
 use anony::try_join;
 
 assert_eq!(try_join!(async { Some(2) }, async { Some("123") }).await, Some((2, "123")));
 assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
+# });
 ```
 
 ## Example Macro Expansions
@@ -58,9 +62,13 @@ assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
 * `serde`: derives [`Serialize`] for anonymous structs and tuples. [serde] crate must exist in your crate.
 * `future`: enables [`Future`] anonymous types, such as [`join!`].
 
-## Disclaimer
+## Nightly
 
-All macros in this crate are 100% hygienic.
+Add this to your dependency:
+
+```toml
+anony = { git = "https://github.com/discreaminant2809/anony.git", branch = "nightly" }
+```
 
 [`struct!`]: https://docs.rs/anony/latest/anony/macro.struct.html
 [`tuple!`]: https://docs.rs/anony/latest/anony/macro.tuple.html

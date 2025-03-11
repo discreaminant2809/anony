@@ -45,17 +45,17 @@ async fn assert_sleep_correct_dur(
 #[tokio::test]
 async fn join_duration() {
     let fut = join_cyclic!(
-        sleep(Duration::from_secs(3)),
-        sleep(Duration::from_secs(3)),
-        // This's the longest, so the whole future should be ended in (approximately) 4 seconds
+        sleep(Duration::from_millis(300)),
+        sleep(Duration::from_millis(300)),
+        // This's the longest, so the whole future should be ended in (approximately) 0.04 seconds.
         async {
-            sleep(Duration::from_secs(2)).await;
-            sleep(Duration::from_secs(2)).await;
+            sleep(Duration::from_millis(200)).await;
+            sleep(Duration::from_millis(200)).await;
         },
-        sleep(Duration::from_secs(1)),
+        sleep(Duration::from_millis(100)),
     );
 
-    assert_sleep_correct_dur(fut, 4.0, 0.1).await;
+    assert_sleep_correct_dur(fut, 0.4, 0.01).await;
 }
 
 #[tokio::test]

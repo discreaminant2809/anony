@@ -1,2 +1,2 @@
 cargo t --test "*" --all-features
-cargo t --doc
+cargo t --doc --all-features
