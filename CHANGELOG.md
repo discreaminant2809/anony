@@ -2,6 +2,10 @@
 
 ## 0.5.3
 
+### Added
+
+- For each macro, added a link to their corresponding example expansions.
+
 ### Changed
 
 - `(try_)join_cyclic`'s internals.
