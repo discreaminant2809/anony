@@ -201,6 +201,7 @@ fn expansion() {
     let _fut_3 = match (async { Some(()) }, async { Some(()) }, async { Some(()) }) {
         futs => {
             use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
             use ::core::ops::ControlFlow;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
@@ -209,11 +210,6 @@ fn expansion() {
             use ::core::task::{Context, Poll};
 
             try_trait!();
-
-            #[inline(always)]
-            unsafe fn unreachable_unchecked() -> ! {
-                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
-            }
 
             enum MaybeDone<F: Future>
             where

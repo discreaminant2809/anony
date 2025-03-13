@@ -64,15 +64,11 @@ fn expansion() {
     let _fut_n = match (async { 134 }, async { "144" }, std::future::pending::<()>()) {
         futs => {
             use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
             use ::core::primitive::bool;
             use ::core::task::{Context, Poll};
-
-            #[inline(always)]
-            unsafe fn unreachable_unchecked() -> ! {
-                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
-            }
 
             enum MaybeDone<F: Future> {
                 Pending(F),

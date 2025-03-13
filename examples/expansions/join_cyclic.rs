@@ -64,15 +64,11 @@ fn expansion() {
     let _fut_n = match (async { 134 }, async { "144" }, std::future::pending::<()>()) {
         futs => {
             use ::core::future::Future;
+            use ::core::hint::unreachable_unchecked;
             use ::core::option::Option::{self, None, Some};
             use ::core::pin::Pin;
             use ::core::primitive::bool;
             use ::core::task::{Context, Poll};
-
-            #[inline(always)]
-            unsafe fn unreachable_unchecked() -> ! {
-                ::core::unreachable!("`unreachable_unchecked` reached at runtime")
-            }
 
             enum MaybeDone<F: Future> {
                 Pending(F),
@@ -124,31 +120,29 @@ fn expansion() {
 
                     if !unsafe {
                         const COUNT: ::core::primitive::u8 = 3;
-                        let mut done = true;
                         let to_skip =
                             ::core::mem::replace(skip_next_time, (*skip_next_time + 1) % COUNT);
 
                         use ::core::iter::Iterator;
-                        Iterator::for_each(
+                        Iterator::fold(
                             Iterator::chain(to_skip..COUNT, 0..to_skip),
-                            |i| match i {
+                            true,
+                            |done, i| match i {
                                 0 => {
-                                    done &=
-                                        MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx)
+                                    MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done0), cx)
+                                        && done
                                 }
                                 1 => {
-                                    done &=
-                                        MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx)
+                                    MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done1), cx)
+                                        && done
                                 }
                                 2 => {
-                                    done &=
-                                        MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx)
+                                    MaybeDone::poll(Pin::new_unchecked(&mut *maybe_done2), cx)
+                                        && done
                                 }
                                 _ => unsafe { unreachable_unchecked() },
                             },
-                        );
-
-                        done
+                        )
                     } {
                         return Poll::Pending;
                     }

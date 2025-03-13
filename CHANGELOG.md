@@ -2,6 +2,10 @@
 
 ## 0.5.3
 
+### Changed
+
+- `(try_)join_cyclic`'s internals.
+
 ## 0.5.2
 
 ### Added

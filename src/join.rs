@@ -118,7 +118,7 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
                 Iterator::chain(to_skip..COUNT, 0..to_skip),
                 true,
                 |done, i| match i {
-                    #(#indices => done & MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx),)*
+                    #(#indices => MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx) && done,)*
                     // SAFETY: we will never reach it since the indices are carefully restricted.
                     _ => unsafe { unreachable_unchecked() },
                 },
@@ -336,16 +336,14 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             match Iterator::try_fold(
                 &mut Iterator::chain(to_skip..COUNT, 0..to_skip),
                 true,
-                |done, i| {
-                    match i {
-                        #(
-                            #indices => ControlFlow::Continue(
-                                MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx)? && done
-                            ),
-                        )*
-                        // SAFETY: we will never reach it since the indices are carefully restricted.
-                        _ => unsafe { unreachable_unchecked() },
-                    }
+                |done, i| match i {
+                    #(
+                        #indices => ControlFlow::Continue(
+                            MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx)? && done
+                        ),
+                    )*
+                    // SAFETY: we will never reach it since the indices are carefully restricted.
+                    _ => unsafe { unreachable_unchecked() },
                 }
             ) {
                 ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
