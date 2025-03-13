@@ -51,6 +51,10 @@ required-features = ["future"]
 name = "comparisons"
 required-features = ["future"]
 
+[[example]]
+name = "expansions"
+required-features = ["future"]
+
 [[test]]
 name = "join"
 required-features = ["future"]
