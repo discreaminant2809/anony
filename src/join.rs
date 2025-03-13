@@ -105,7 +105,6 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
         let indices = (0..futs.len()).map(syn::Index::from);
         quote!(
             const COUNT: #skip_next_time_ty = #fut_count;
-            let mut done = true;
             let to_skip = ::core::mem::replace(
                 skip_next_time,
                 // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
@@ -114,18 +113,16 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             );
 
             use ::core::iter::Iterator;
-            // We use `for_each` since `chain` has a more efficient implementation for `for_each`,
-            // making it more efficient than for loop.
-            Iterator::for_each(
+            // DO NOT use `Iterator::any` or `Iterator::all`. They're short-circuit, and we require polling ALL.
+            Iterator::fold(
                 Iterator::chain(to_skip..COUNT, 0..to_skip),
-                |i| match i {
-                    #(#indices => done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx),)*
-                    // SAFETY: we will never reach it
+                true,
+                |done, i| match i {
+                    #(#indices => done & MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx),)*
+                    // SAFETY: we will never reach it since the indices are carefully restricted.
                     _ => unsafe { unreachable_unchecked() },
-                }
-            );
-
-            done
+                },
+            )
         )
     } else {
         quote!(
@@ -148,13 +145,10 @@ fn imp_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             #take_output
         ),
     );
-    let unreachable_unchecked_fn = unreachable_unchecked_fn();
 
     quote!(match (#(#futs,)*) { futs => {
         #neccessary_import
         use ::core::option::Option::{self, Some, None}; // the `neccessary_import` hasn't imported this
-
-        #unreachable_unchecked_fn
 
         // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
         // #[pin_project]
@@ -326,7 +320,6 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
         let indices = (0..futs.len()).map(syn::Index::from);
         quote!(
             const COUNT: #skip_next_time_ty = #fut_count;
-            let mut done = true;
             let to_skip = ::core::mem::replace(
                 skip_next_time,
                 // `COUNT` is always > 1 since we've guarded the `0` and `1` cases explicitly (for more efficient logics)
@@ -335,24 +328,29 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             );
 
             use ::core::iter::Iterator;
-            // We use `for_each` since `chain` has a more efficient implementation for `for_each`,
-            // making it more efficient than for loop.
-            if let ControlFlow::Break(r) = Iterator::try_for_each(
+            // DO NOT use `Iterator::any` or `Iterator::all`. They're short-circuit, and we require polling ALL.
+            // However, we do short-circuit on break value, since it signifies the completion with short-citcuit completion.
+            // As long as we don't cause UB, `Future::poll` doesn't require us to specify behaviors after yielding `Pending::Ready`,
+            // so we don't need to set the wrapped futures to be done on short-circuit for performance.
+            // However, this behavior may be changed in the future
+            match Iterator::try_fold(
                 &mut Iterator::chain(to_skip..COUNT, 0..to_skip),
-                |i| {
+                true,
+                |done, i| {
                     match i {
-                        #(#indices => done &= MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx)?,)*
-                        // SAFETY: we will never reach it
+                        #(
+                            #indices => ControlFlow::Continue(
+                                MaybeDone::poll(Pin::new_unchecked(&mut *#maybe_done_vars), cx)? && done
+                            ),
+                        )*
+                        // SAFETY: we will never reach it since the indices are carefully restricted.
                         _ => unsafe { unreachable_unchecked() },
                     }
-
-                    ControlFlow::Continue(())
                 }
             ) {
-                return Poll::Ready(Try::from_residual(r));
+                ControlFlow::Break(r) => return Poll::Ready(Try::from_residual(r)),
+                ControlFlow::Continue(done) => done,
             }
-
-            done
         )
     } else {
         quote!(
@@ -389,14 +387,11 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
             #take_output
         ),
     );
-    let unreachable_unchecked_fn = unreachable_unchecked_fn();
 
     quote!(match (#(#futs,)*) { futs => {
         #neccessary_import
 
         #try_trait_and_import
-
-        #unreachable_unchecked_fn
 
         // Put a "ghost" `#[pin_project]` macro to help know which one is structurally pinned
         // #[pin_project]
@@ -409,6 +404,16 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
                 F
             ),
             // It might seem inefficient... but the compiler can optimize the layout
+            // Note that this is just an ad-hoc `MaybeDone` that's just to serve the macro, or the future specifically.
+            // A correct implementation should store `Option<F::Output>` instead (mark as Ready despite short-circuit).
+            // We don't do that here. But what if the future is polled again after short-circuit?
+            // When the future is short-circuit, it also counts as "completed the future," and
+            // `Future` doesn't require any behaviors (except UBs) if we poll it again after completion.
+            // It means that we can just leave the future behaves whatever we want after completion; for this case, it's
+            // that the wrapped completed futures may be polled again, and panic with a completely different message than
+            // when all are completed. There's no risk of UB, since we always make sure that the code that take all outputs
+            // are only reachable when all the `MaybeDone`s are `Ready`.
+            // However, this behavior may be changed in the future, so the caller shouldn't rely on it.
             Ready(Option<<F::Output as Try>::Output>),
         }
 
@@ -441,6 +446,7 @@ fn imp_try_as_direct(futs: &[Expr], is_cyclic: bool) -> pm2::TokenStream {
                                     Pin::set(&mut self, Self::Ready(Some(c)));
                                     ControlFlow::Continue(true)
                                 }
+                                // As explained above, we don't need to set the `MaybeDone` to `Ready`
                                 ControlFlow::Break(b) => ControlFlow::Break(b),
                             },
                             Poll::Pending => ControlFlow::Continue(false),
@@ -621,6 +627,7 @@ fn maybe_done_force_take_output(ret_ty: impl ToTokens) -> pm2::TokenStream {
         unsafe fn force_take_output(self: Pin<&mut Self>) -> Option<#ret_ty> {
             // SAFETY: pinning projection
             match Pin::get_unchecked_mut(self) {
+                // SAFETY: by the time it's called, the future must've been done.
                 Self::Pending(_) => unreachable_unchecked(),
                 // SAFETY: the output is NOT structurally pinned
                 Self::Ready(o) => o.take(),
@@ -647,7 +654,7 @@ fn take_output(
             ) {
                 (#(Some(#outputs),)*) => Poll::Ready(#mapper((#(#outputs,)*))),
                 (#(#nones,)*) => ::core::panic!("`{}!` future polled after completion", #macro_name),
-                // SAFETY: they have been done. It leads to a more efficient codegen
+                // SAFETY: they have either not been done, or all done (no mixed states). It leads to a more efficient codegen
                 _ => unreachable_unchecked(),
             }
         }
@@ -664,6 +671,7 @@ fn neccessary_import() -> pm2::TokenStream {
         // They can be polluted by something like `struct usize;`, which is actually permitted but causes errors
         // See more:
         use ::core::primitive::bool;
+        use ::core::hint::unreachable_unchecked;
     )
 }
 
@@ -703,19 +711,4 @@ fn skip_next_time(is_cyclic: bool, n: u128) -> [pm2::TokenStream; 3] {
     };
 
     [skip_next_time_ty, quote!(skip_next_time), quote!(0)]
-}
-
-fn unreachable_unchecked_fn() -> pm2::TokenStream {
-    let body = if cfg!(debug_assertions) {
-        quote!(::core::unreachable!(
-            "`unreachable_unchecked` reached at runtime"
-        ))
-    } else {
-        quote!(unsafe { ::core::hint::unreachable_unchecked() })
-    };
-
-    quote!(
-        #[inline(always)]
-        unsafe fn unreachable_unchecked() -> ! { #body }
-    )
 }
