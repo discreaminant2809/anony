@@ -148,8 +148,6 @@ use proc_macro2 as pm2;
 /// assert_eq!(address, "123 St. SW");
 /// ```
 ///
-/// ## Pin Projection
-///
 /// You can use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, similar to how you use the `pin-project` crate.
 /// The struct created by `project_ref` (but not `project_mut`) implements [`Clone`] and [`Copy`]:
 ///
@@ -178,12 +176,19 @@ use proc_macro2 as pm2;
 ///
 /// # Implemented Traits
 ///
-/// This struct implements the following traits if all of its fields implement them:
+/// This struct implements the following traits if all of its fields also implement them:
+///
 /// * All traits in [`std::cmp`]
 /// * [`Debug`]
+///   
+///   **Behavior:** The struct's name is hidden; only field names and values are debugged.
+///
 /// * [`Hash`]
 /// * [`Clone`] and [`Copy`] (the cloned instance is guaranteed to have the same type as the source)
 /// * [`Serialize`] (requires the `serde` feature)
+///
+///   **Behavior:** The struct's name is hidden; only field names and values are serialized.
+///   As a result, some data formats may not work, such as XML as it requires the struct's name as a tag.
 ///
 /// # Example Expansions
 ///
@@ -241,8 +246,6 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_eq!(address, "123 St. SW");
 /// ```
 ///
-/// ## Pin Projection
-///
 /// Use `project_ref` for `Pin<&_>` and `project_mut` for `Pin<&mut _>`, similar to the `pin-project` crate.
 /// These functions return normal tuples:
 ///
@@ -279,12 +282,18 @@ pub fn r#struct(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Implemented Traits
 ///
-/// This struct implements the following traits if all of its fields implement them:
+/// This tuple implements the following traits if all of its fields implement them:
+///
 /// * All traits in [`std::cmp`]
 /// * [`Debug`]
+///   
+///   **Behavior:** Debugged as a normal tuple.
+///
 /// * [`Hash`]
 /// * [`Clone`] and [`Copy`] (the cloned instance is guaranteed to have the same type as the source)
 /// * [`Serialize`] (requires the `serde` feature)
+///
+///   **Behavior:** Serialized as a normal tuple.
 ///
 /// # Example Expansions
 ///

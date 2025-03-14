@@ -8,6 +8,7 @@
 
 ### Changed
 
+- Major documentation change.
 - `(try_)join_cyclic`'s internals.
 
 ## 0.5.2
