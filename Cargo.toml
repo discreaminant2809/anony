@@ -1,6 +1,6 @@
 [package]
 name = "anony"
-version = "0.5.3"
+version = "0.6.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Anonymous struct"
@@ -17,13 +17,13 @@ proc-macro = true
 
 [dependencies]
 proc-macro2 = "1.0.94"
-quote = "1.0.39"
+quote = "1.0.40"
 syn = { version = "2.0.100", features = ["full"] }
 
 [dev-dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-tokio = { version = "1.44.0", features = ["full"] }
+tokio = { version = "1.44.1", features = ["full"] }
 futures = "0.3.31"
 scopeguard = "1.2.0"
 spmc = "0.3.0"
@@ -65,6 +65,10 @@ required-features = ["future"]
 
 [[test]]
 name = "try_join"
+required-features = ["future"]
+
+[[test]]
+name = "try_join_cyclic"
 required-features = ["future"]
 
 [[bench]]

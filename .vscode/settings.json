@@ -1,5 +1,3 @@
 {
-    "rust-analyzer.cargo.features": [
-        "future", "serde"
-    ]
+    "rust-analyzer.cargo.features": "all",
 }

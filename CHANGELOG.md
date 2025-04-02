@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- `combine_futures` macro, a generalization of `join!` and `select!`.
+
 ## 0.5.3
 
 ### Added
