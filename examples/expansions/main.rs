@@ -1,4 +1,4 @@
-#![allow(unused, clippy::match_single_binding)]
+#![allow(unused, unsafe_op_in_unsafe_fn, clippy::match_single_binding)]
 
 mod anonymous_struct;
 mod join;
