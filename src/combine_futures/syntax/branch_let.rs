@@ -1,28 +1,38 @@
-use std::ops::ControlFlow;
-
+use derive_quote_to_tokens::ToTokens;
 use syn::{Expr, Pat, Token, parse::Parse};
 
-use super::{
-    ControlFLowToken, parse_cf_directive_followed_by_comma, parse_control_flow,
-    parse_expr_followed_by_comma,
-};
+use super::{CfToken, parse_cf_directive_followed_by_comma};
 
+#[derive(ToTokens)]
 pub struct BranchLet {
-    let_token: Token![let],
-    pat: Pat,
-    eq_token: Token![=],
-    fut_expr: Expr,
-    else_arm: Option<(Token![else], Token![=>], ControlFLowToken, Expr)>,
-    fat_arrow_token: Token![=>],
-    control_flow: ControlFLowToken,
-    body: Option<Expr>,
-    comma: Option<Token![,]>,
+    pub let_token: Token![let],
+    pub pat: Pat,
+    pub eq_token: Token![=],
+    pub fut_expr: Expr,
+    pub else_arm: Option<BranchLetElseArm>,
+    pub fat_arrow_token: Token![=>],
+    pub control_flow: CfToken,
+    pub body: Option<Expr>,
+    pub comma: Option<Token![,]>,
+}
+
+#[derive(ToTokens)]
+pub struct BranchLetElseArm {
+    pub else_token: Token![else],
+    pub fat_arrow_token: Token![=>],
+    pub control_flow: CfToken,
+    pub body: Option<Expr>,
 }
 
 impl BranchLet {
     pub fn always_breaks(&self) -> bool {
-        !matches!(self.else_arm, Some((_, _, ControlFlow::Continue(_), _)))
-            && matches!(self.control_flow, ControlFlow::Break(_))
+        !matches!(
+            self.else_arm,
+            Some(BranchLetElseArm {
+                control_flow: CfToken::Continue(_),
+                ..
+            })
+        ) && matches!(self.control_flow, CfToken::Break(_))
     }
 }
 
@@ -38,12 +48,14 @@ impl Parse for BranchLet {
             .parse::<Token![else]>()
             .ok()
             .map(|else_token| -> syn::Result<_> {
-                Ok((
+                Ok(BranchLetElseArm {
                     else_token,
-                    input.parse()?,
-                    parse_control_flow(input)?,
-                    input.parse()?,
-                ))
+                    fat_arrow_token: input.parse()?,
+                    control_flow: input.parse()?,
+                    body: (!input.peek(Token![=>]))
+                        .then(|| input.parse())
+                        .transpose()?,
+                })
             })
             .transpose()?;
         let fat_arrow_token = input.parse()?;

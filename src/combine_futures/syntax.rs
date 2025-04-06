@@ -1,33 +1,47 @@
-use std::ops::ControlFlow;
-
-use syn::{Expr, Lifetime, Token, parse::ParseStream};
+use syn::{
+    Expr, ExprClosure, Lifetime, Token,
+    parse::{Parse, ParseStream},
+};
 
 mod branch;
 mod branch_if_let;
 mod branch_let;
 mod branch_match;
 mod branch_short_hand;
+mod cf_token;
 
 pub(super) use branch::*;
 pub(super) use branch_if_let::*;
 pub(super) use branch_let::*;
 pub(super) use branch_match::*;
 pub(super) use branch_short_hand::*;
+pub(super) use cf_token::*;
 
 pub(super) struct Input {
     pub movability: Option<Token![move]>,
     pub branches: Vec<Branch>,
+    pub continue_collector: Option<ExprClosure>,
 }
 
-pub(super) type ControlFLowToken = ControlFlow<Token![break], Token![continue]>;
+impl Parse for Input {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let movability = input.parse()?;
+        let mut branches = std::iter::from_fn(|| {
+            (!input.is_empty() && !input.peek(Token![|])).then(|| {
+                input.parse().map_err(|mut e| {
+                    e.combine(input.error("expected continue collector"));
+                    e
+                })
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+        let continue_collector = input.peek(Token![|]).then(|| input.parse()).transpose()?;
 
-fn parse_control_flow(input: ParseStream) -> syn::Result<ControlFLowToken> {
-    if input.peek(Token![break]) {
-        input.parse::<Token![break]>().map(ControlFlow::Break)
-    } else if input.peek(Token![continue]) {
-        input.parse::<Token![continue]>().map(ControlFlow::Continue)
-    } else {
-        Err(input.error("expected `break` or `continue`"))
+        Ok(Self {
+            movability,
+            branches,
+            continue_collector,
+        })
     }
 }
 
@@ -64,8 +78,8 @@ fn parse_expr_followed_by_comma(input: ParseStream) -> syn::Result<(Expr, Option
 /// Parse control flow directive, like `continue 3`, with comma awareness.
 fn parse_cf_directive_followed_by_comma(
     input: ParseStream,
-) -> syn::Result<(ControlFLowToken, Option<Expr>, Option<Token![,]>)> {
-    let control_flow = parse_control_flow(input)?;
+) -> syn::Result<(CfToken, Option<Expr>, Option<Token![,]>)> {
+    let control_flow = input.parse()?;
 
     if input.peek(Lifetime) {
         // See https://docs.rs/syn/2.0.100/src/syn/expr.rs.html#2710-2722
