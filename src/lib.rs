@@ -82,6 +82,8 @@
 
 mod anonymous_struct;
 #[cfg(feature = "future")]
+mod combine_futures;
+#[cfg(feature = "future")]
 mod join;
 mod tuple;
 mod utils;
