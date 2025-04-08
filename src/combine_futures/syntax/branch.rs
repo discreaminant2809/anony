@@ -1,5 +1,5 @@
 use derive_quote_to_tokens::ToTokens;
-use syn::{Token, parse::Parse};
+use syn::{Expr, Token, parse::Parse};
 
 use super::{BranchIfLet, BranchLet, BranchMatch, BranchShortHand};
 
@@ -23,6 +23,15 @@ impl Branch {
             Branch::IfLet(branch_if_let) => branch_if_let.always_breaks(),
             Branch::Match(branch_match) => branch_match.always_breaks(),
             Branch::ShortHand(branch_short_hand) => branch_short_hand.always_breaks(),
+        }
+    }
+
+    pub fn fut_expr(&self) -> &Expr {
+        match self {
+            Branch::Let(branch_let) => &branch_let.fut_expr,
+            Branch::IfLet(branch_if_let) => &branch_if_let.fut_expr,
+            Branch::Match(branch_match) => &branch_match.fut_expr,
+            Branch::ShortHand(branch_short_hand) => &branch_short_hand.fut_expr,
         }
     }
 }

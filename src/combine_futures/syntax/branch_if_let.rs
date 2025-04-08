@@ -45,7 +45,7 @@ pub struct BranchIfLetIfArm {
 
     pub fat_arrow_token: Token![=>],
     pub control_flow: CfToken,
-    pub then_arm: Expr,
+    pub then_arm: Block,
 
     pub else_arm: BranchIfLetElseArm,
 }

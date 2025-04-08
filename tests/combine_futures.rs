@@ -1,30 +1,38 @@
 #[test]
 #[ignore = "syntax test"]
 fn syntax_test() {
-    anony::combine_futures! {
+    let fut_expr0 = async { 3 };
+    let condition = false;
+
+    let fut = anony::combine_futures! {
+        // removing it will cause error in the `assert_static`, since the captured variable is captured by reference.
         move
 
-        continue {async {2}},
+        break async {2},
 
-        continue fut_expr,
+        let _x = async {2} else => break 2 => continue,
 
-        let pat = fut_expr                    => continue,
+        let x = fut_expr0 => continue x,
 
-        let pat = async {} else => break expr => continue expr,
-
-        if let pat = fut_expr => continue {
-
+        if let x = async {-1} => break {
+            x
         } else if condition => break {
-
+            0
+        } else if condition => break {
+            0
         } else => break {
-
+            0
         }
 
-        match fut_expr {
-            pat => continue expr,
-            pat if guard => break expr,
+        match async{ Some(2) } {
+            Some(x) if x == 0 => break x,
+            Some(x) => continue { x }
+            None => break 0,
         }
 
-        |s| 2
+        // |_, a, b| a + b
     };
+
+    fn assert_static<T: 'static>(_: &T) {}
+    assert_static(&fut);
 }

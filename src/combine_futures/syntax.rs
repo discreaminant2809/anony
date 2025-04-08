@@ -26,7 +26,7 @@ pub(super) struct Input {
 impl Parse for Input {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let movability = input.parse()?;
-        let mut branches = std::iter::from_fn(|| {
+        let branches = std::iter::from_fn(|| {
             (!input.is_empty() && !input.peek(Token![|])).then(|| {
                 input.parse().map_err(|mut e| {
                     e.combine(input.error("expected continue collector"));

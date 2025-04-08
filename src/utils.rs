@@ -1,11 +1,9 @@
-use std::fmt::Display;
-
-use quote::format_ident;
-use syn::{parse::Parse, Expr, Token};
+use quote::{IdentFragment, format_ident};
+use syn::{Expr, Token, parse::Parse};
 use syn::{Ident, Index};
 
-pub(crate) fn i_idents(prefix: impl Display, n: usize) -> Vec<Ident> {
-    (0..n).map(|i| format_ident!("{prefix}{i}")).collect()
+pub(crate) fn i_idents(prefix: impl IdentFragment, n: usize) -> Vec<Ident> {
+    (0..n).map(|i| format_ident!("{}{i}", prefix)).collect()
 }
 
 pub(crate) fn tuple_indices(n: usize) -> Vec<Index> {
