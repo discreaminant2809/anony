@@ -4,7 +4,7 @@ fn syntax_test() {
     let fut_expr0 = async { 3 };
     let condition = false;
 
-    let _fut = anony::combine_futures! {
+    let _fut = anony::combine_futures_cyclic! {
         break async {2},
 
         let _x = async {2} else => break 2 => continue,
@@ -29,7 +29,7 @@ fn syntax_test() {
     };
 
     let fut_expr0 = async { 3 };
-    let fut = anony::combine_futures! {
+    let fut = anony::combine_futures_cyclic! {
         // removing it will cause error in the `assert_static`, since the captured variable is captured by reference.
         move
 
