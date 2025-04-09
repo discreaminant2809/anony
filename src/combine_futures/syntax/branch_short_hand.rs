@@ -11,7 +11,7 @@ pub struct BranchShortHand {
 }
 
 impl BranchShortHand {
-    pub fn always_breaks(&self) -> bool {
+    pub fn pure_break(&self) -> bool {
         matches!(self.control_flow, CfToken::Break(_))
     }
 }

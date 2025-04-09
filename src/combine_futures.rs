@@ -1,8 +1,9 @@
 use quote::ToTokens;
-use syn::Ident;
+use syn::{Expr, ExprLet, Ident};
 use syntax::{
     Branch, BranchIfLet, BranchIfLetElseArm, BranchIfLetElseArmDirection, BranchIfLetIfArm,
-    BranchLet, BranchLetElseArm, BranchMatch, BranchMatchArm, BranchShortHand, CfToken, Input,
+    BranchLet, BranchLetElseArm, BranchMatch, BranchMatchArm, BranchMatchArmGuard, BranchShortHand,
+    CfToken, Input,
 };
 
 use crate::{pm2, utils};
@@ -12,50 +13,58 @@ mod syntax;
 pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm2::TokenStream> {
     let input = syn::parse::<Input>(tt)?;
 
-    let any_pure_break = if input.continue_collector.is_some() {
+    let pure_breaks = if input.continue_collector.is_some() {
         let mut always_breaks_error = syn::Error::new_spanned(
             input.continue_collector.as_ref().unwrap(),
             "cannot specify continue collector because some branches above always break",
         );
 
-        let any_always_breaks = any_pure_break(&input, |branch| {
+        let pure_breaks = pure_breaks(&input, |branch| {
             always_breaks_error.combine(syn::Error::new_spanned(
                 branch,
                 "this branch always breaks, which causes the error",
-            ));
+            ))
         });
 
-        if any_always_breaks {
+        if pure_breaks.is_some() {
             return Err(always_breaks_error);
         }
 
-        any_always_breaks
+        pure_breaks
     } else {
-        any_pure_break(&input, |_| {})
+        pure_breaks(&input, |_| {})
     };
 
-    Ok(imp_impl(&input, any_pure_break, is_cyclic))
+    Ok(imp_impl(&input, pure_breaks, is_cyclic))
 }
 
-fn any_pure_break(input: &Input, mut on_found_one: impl FnMut(&Branch)) -> bool {
-    let mut any_always_breaks = false;
-    for branch in &input.branches {
-        if branch.always_breaks() {
-            any_always_breaks = true;
-            on_found_one(branch);
+fn pure_breaks(input: &Input, mut on_pure_break_branch: impl FnMut(&Branch)) -> Option<Vec<bool>> {
+    let mut pure_breaks = None;
+    for (i, branch) in input.branches.iter().enumerate() {
+        if branch.is_pure_break() {
+            let pure_breaks = pure_breaks.get_or_insert_with(|| vec![false; input.branches.len()]);
+            pure_breaks[i] = true;
+            on_pure_break_branch(branch);
         }
     }
 
-    any_always_breaks
+    pure_breaks
 }
 
-/// I'm tired of `quote_spanned! { Span::mixed_site()=> ... }` already.
+/// I'm tired of `quote_spanned! { Span::mixed_site()=> ... }` already, so it exists.
+///
+/// Rust analyzer, use this:
+/// ```
+/// quote_mixed_site! {}
+/// ```
 macro_rules! quote_mixed_site {
-    ($($tt:tt)*) => { ::quote::quote_spanned! { $crate::pm2::Span::mixed_site()=> $($tt)* } };
+    { $($tt:tt)* } => { ::quote::quote_spanned! { $crate::pm2::Span::mixed_site()=> $($tt)* } };
 }
 
 // TODO: cyclical polling
-fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenStream {
+fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> pm2::TokenStream {
+    let any_pure_break = pure_breaks.is_some();
+
     let necessary_imports = necessary_imports();
     let fut_ty = Ident::new(
         if is_cyclic {
@@ -65,6 +74,7 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
         },
         pm2::Span::mixed_site(),
     );
+
     let [to_skip_ty, to_skip_ident, to_skip_init] = to_skip(is_cyclic, input.branches.len() as _);
     let mut_ref_to_skip_ty = if is_cyclic {
         quote_mixed_site! { &mut #to_skip_ty }
@@ -79,21 +89,32 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
     } else {
         utils::i_idents("C", input.branches.len())
     };
-    let continue_reprs: Vec<_> = if any_pure_break {
-        (0..input.branches.len())
-            .map(|_| quote_mixed_site! { () })
+    let fut_reprs: Vec<_> = if let Some(pure_breaks) = pure_breaks.as_ref() {
+        pure_breaks
+            .iter()
+            .zip(&fut_generics)
+            .map(|(&pure_break, fut_generic)| {
+                if pure_break {
+                    quote_mixed_site! { #fut_generic }
+                } else {
+                    quote_mixed_site! { ControlFlow<(), #fut_generic> }
+                }
+            })
             .collect()
     } else {
         continue_generics
             .iter()
-            .map(|generic| quote_mixed_site! { Option<#generic> })
+            .zip(&fut_generics)
+            .map(|(continue_generic, fut_generic)| {
+                quote_mixed_site! { ControlFlow<Option<#continue_generic>, #fut_generic> }
+            })
             .collect()
     };
 
     let generics = quote_mixed_site! {<#(#fut_generics,)* #(#continue_generics,)* S, O>};
     let selector_bound = quote_mixed_site! {
         FnMut(
-            #(&mut ControlFlow<#continue_reprs, #fut_generics>,)*
+            #(&mut #fut_reprs,)*
             &mut Context<'_>,
             #mut_ref_to_skip_ty
         ) -> Poll<O>
@@ -110,6 +131,17 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
         input.branches.len(),
     );
 
+    let wrap_futs = fut_idents.iter().enumerate().map(|(i, fut_ident)| {
+        if pure_breaks
+            .as_ref()
+            .is_some_and(|pure_breaks| pure_breaks[i])
+        {
+            quote_mixed_site! { IntoFuture::into_future(#fut_ident) }
+        } else {
+            quote_mixed_site! { ControlFlow::Continue(IntoFuture::into_future(#fut_ident)) }
+        }
+    });
+
     let o_idents = utils::i_idents(
         Ident::new("o", pm2::Span::mixed_site()),
         input.branches.len(),
@@ -117,45 +149,71 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
 
     let fut_exprs = input.branches.iter().map(Branch::fut_expr);
     let movability = input.movability;
-    let handlers = input
-        .branches
-        .iter()
-        .zip(&fut_idents)
-        .map(|(branch, fut_ident)| {
-            let handler = match branch {
-                Branch::Let(branch) => {
-                    handler_of_branch_let(branch, fut_ident, any_pure_break, is_cyclic)
-                }
-                Branch::IfLet(branch_if_let) => {
-                    handler_of_branch_if_let(branch_if_let, fut_ident, any_pure_break, is_cyclic)
-                }
-                Branch::Match(branch_match) => {
-                    handler_of_branch_match(branch_match, fut_ident, any_pure_break, is_cyclic)
-                }
-                Branch::ShortHand(branch_short_hand) => handler_of_branch_short_hand(
-                    branch_short_hand,
-                    fut_ident,
-                    any_pure_break,
-                    is_cyclic,
-                ),
-            };
 
-            quote_mixed_site! { // we're interacting with user code. (highly unhygienic)
-                // Full qualification, for the same reason as above. (Mixed-site span does not help)
-                // `fut_ident` has mixed-site span, so the user code can't refer to it.
-                'poll_scope: { // facility for `let-else` branch.
-                    if let ::core::ops::ControlFlow::Continue(fut_inner) = #fut_ident {
-                        if let ::core::task::Poll::Ready(o) = ::core::future::Future::poll(
-                            // SAFETY: pinning projection: the future is structurally pinned.
-                            unsafe { ::core::pin::Pin::new_unchecked(fut_inner) },
-                            cx,
-                        ) {
-                            #handler
+    let handlers =
+        input
+            .branches
+            .iter()
+            .zip(&fut_idents)
+            .enumerate()
+            .map(|(i, (branch, fut_ident))| {
+                let handler = match branch {
+                    Branch::Let(branch) => {
+                        handler_of_branch_let(branch, fut_ident, any_pure_break, is_cyclic)
+                    }
+                    Branch::IfLet(branch_if_let) => handler_of_branch_if_let(
+                        branch_if_let,
+                        fut_ident,
+                        any_pure_break,
+                        is_cyclic,
+                    ),
+                    Branch::Match(branch_match) => {
+                        handler_of_branch_match(branch_match, fut_ident, any_pure_break, is_cyclic)
+                    }
+                    Branch::ShortHand(branch_short_hand) => handler_of_branch_short_hand(
+                        branch_short_hand,
+                        fut_ident,
+                        any_pure_break,
+                        is_cyclic,
+                    ),
+                };
+
+                if pure_breaks
+                    .as_ref()
+                    .is_some_and(|pure_breaks| pure_breaks[i])
+                {
+                    quote_mixed_site! {
+                        'poll_scope: {
+                            if let ::core::task::Poll::Ready(o) = ::core::future::Future::poll(
+                                // SAFETY: pinning projection: the future is structurally pinned.
+                                unsafe { ::core::pin::Pin::new_unchecked(#fut_ident) },
+                                cx,
+                            ) {
+                                // Only `continue` arm sets the future, so no worry.
+                                #handler
+                            } else {
+                                done = false;
+                            }
+                        }
+                    }
+                } else {
+                    quote_mixed_site! {
+                        'poll_scope: {
+                            if let ::core::ops::ControlFlow::Continue(fut_inner) = #fut_ident {
+                                if let ::core::task::Poll::Ready(o) = ::core::future::Future::poll(
+                                    // SAFETY: pinning projection: the future is structurally pinned.
+                                    unsafe { ::core::pin::Pin::new_unchecked(fut_inner) },
+                                    cx,
+                                ) {
+                                    #handler
+                                } else {
+                                    done = false;
+                                }
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
 
     let continue_collector = if any_pure_break {
         quote_mixed_site! {}
@@ -168,7 +226,11 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
         let many_none = (0..input.branches.len()).map(|_| quote_mixed_site! { None });
 
         quote_mixed_site! {
-            if let (#(::core::ops::ControlFlow::Break(#o_idents),)*) = (#(#fut_idents,)*) {
+            if done {
+                let (#(::core::ops::ControlFlow::Break(#o_idents),)*) = (#(#fut_idents,)*) else {
+                    unsafe { ::core::hint::unreachable_unchecked() }
+                };
+
                 match (#(::core::option::Option::take(#o_idents),)*) {
                     (#(::core::option::Option::Some(#o_idents),)*) => {
                         return ::core::task::Poll::Ready((#continue_collector)(#(#o_idents),*));
@@ -185,19 +247,6 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
     let mut fut_count = pm2::Literal::usize_unsuffixed(input.branches.len());
     fut_count.set_span(pm2::Span::mixed_site());
     let fut_count = fut_count;
-
-    // let shift_to_skip = if is_cyclic {
-    //     quote_mixed_site! {
-    //         // Do this to enforce the type of the count.
-    //         const COUNT: #to_skip_ty = #fut_count;
-    //         let #to_skip_ident = ::core::mem::replace(
-    //             #to_skip_ident,
-    //             (*#to_skip_ident + 1) % COUNT
-    //         );
-    //     }
-    // } else {
-    //     quote_mixed_site! {}
-    // };
 
     let polling_logic = if is_cyclic {
         let handlers = handlers.enumerate().map(|(i, handler)| {
@@ -244,7 +293,7 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
                     // #[pin]
                     // Even pinned, only the future is, not the result wrapped in `Option` is not pinned,
                     // since taking the value does not require pinning.
-                    ControlFlow<#continue_reprs, #fut_generics>,
+                    #fut_reprs,
                 )*
                 // not pinned, since the closure can be used without being pinned.
                 S,
@@ -258,7 +307,7 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
                 selector: S,
             ) -> Self {
                 Self::Inner(
-                    #(ControlFlow::Continue(IntoFuture::into_future(#fut_idents)),)*
+                    #(#wrap_futs,)*
                     selector,
                     #to_skip_init
                 )
@@ -287,8 +336,8 @@ fn imp_impl(input: &Input, any_pure_break: bool, is_cyclic: bool) -> pm2::TokenS
     })(
         #(#fut_exprs,)*
         #movability |#(#fut_idents,)* cx, #to_skip_ident| {
+            let mut done = true;
             #polling_logic
-
             #continue_collector
 
             ::core::task::Poll::Pending
@@ -462,6 +511,12 @@ fn handler_of_branch_match(
                     is_cyclic,
                 );
 
+                let guard = if let Some(BranchMatchArmGuard { if_token, expr }) = guard {
+                    quote_mixed_site! { #if_token (|| #expr)() }
+                } else {
+                    quote_mixed_site! {}
+                };
+
                 quote_mixed_site! {
                    #pat #guard #fat_arrow_token { #decision }
                 }
@@ -477,16 +532,7 @@ fn handler_of_branch_match(
 }
 
 fn handler_of_branch_if_let(
-    BranchIfLet {
-        if_token,
-        let_token,
-        pat,
-        eq_token,
-        control_flow,
-        then_arm,
-        else_arm,
-        ..
-    }: &BranchIfLet,
+    BranchIfLet { if_arm }: &BranchIfLet,
     fut_ident: &Ident,
     any_pure_break: bool,
     is_cyclic: bool,
@@ -515,8 +561,13 @@ fn handler_of_branch_if_let(
                 quote_mixed_site! { #else_token { #decision } }
             }
             BranchIfLetElseArmDirection::ElseIf(branch_if_let_if_arm) => {
-                let handler_of_if_arm =
-                    handler_of_if_arm(branch_if_let_if_arm, fut_ident, any_pure_break, is_cyclic);
+                let handler_of_if_arm = handler_of_if_arm(
+                    branch_if_let_if_arm,
+                    fut_ident,
+                    any_pure_break,
+                    is_cyclic,
+                    false,
+                );
 
                 quote_mixed_site! { #else_token #handler_of_if_arm }
             }
@@ -535,6 +586,7 @@ fn handler_of_branch_if_let(
         fut_ident: &Ident,
         any_pure_break: bool,
         is_cyclic: bool,
+        is_fut_output: bool,
     ) -> pm2::TokenStream {
         let decision = decision(
             Some(then_arm),
@@ -546,19 +598,49 @@ fn handler_of_branch_if_let(
         let handler_of_else_arm =
             handler_of_else_arm(else_arm, fut_ident, any_pure_break, is_cyclic);
 
+        // What if `cond` is a macro that expands to a `let` expression?
+        // Consider this:
+        // ```
+        // fn compile() {
+        //     if let 2 = 2 {}
+        // }
+        //
+        // fn not_compile() {
+        //     macro_rules! foo {
+        //         ($x:expr) => { let 2 = $x };
+        //     }
+        //
+        //     if foo!(2) {} // compile error!
+        //
+        //     if true {
+        //     } else if foo!(2) { // also compile error!
+        //     }
+        // }
+        // ```
+        // The reason is that the `let` in `if-let` expression must not come from macro.
+        // In such case, the `let` injected from the macro will still be understood
+        // as a part of the expression of the macro, and not something that can be merged with `if`.
+        let cond = match cond {
+            Expr::Let(ExprLet {
+                attrs,
+                let_token,
+                pat,
+                eq_token,
+                ..
+            }) if is_fut_output => quote_mixed_site! { #(#attrs)* #let_token #pat #eq_token o },
+            Expr::Let(ExprLet {
+                attrs,
+                let_token,
+                pat,
+                eq_token,
+                expr,
+            }) => quote_mixed_site! { #(#attrs)* #let_token #pat #eq_token (|| #expr)() },
+            _ if is_fut_output => quote_mixed_site! { o },
+            cond => quote_mixed_site! { (|| #cond)() },
+        };
+
         quote_mixed_site! { #if_token #cond { #decision } #handler_of_else_arm }
     }
 
-    let decision = decision(
-        Some(then_arm),
-        control_flow,
-        fut_ident,
-        any_pure_break,
-        is_cyclic,
-    );
-    let handler_of_else_arm = handler_of_else_arm(else_arm, fut_ident, any_pure_break, is_cyclic);
-
-    quote_mixed_site! {
-        #if_token #let_token #pat #eq_token o { #decision } #handler_of_else_arm
-    }
+    handler_of_if_arm(if_arm, fut_ident, any_pure_break, is_cyclic, true)
 }

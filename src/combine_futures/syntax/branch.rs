@@ -1,7 +1,7 @@
 use derive_quote_to_tokens::ToTokens;
-use syn::{Expr, Token, parse::Parse};
+use syn::{Expr, ExprLet, Token, parse::Parse};
 
-use super::{BranchIfLet, BranchLet, BranchMatch, BranchShortHand};
+use super::{BranchIfLet, BranchIfLetIfArm, BranchLet, BranchMatch, BranchShortHand};
 
 /// Branch containing a future that will be run concurrently.
 #[derive(ToTokens)]
@@ -17,19 +17,28 @@ pub enum Branch {
 }
 
 impl Branch {
-    pub fn always_breaks(&self) -> bool {
+    pub fn is_pure_break(&self) -> bool {
         match self {
-            Branch::Let(branch_let) => branch_let.always_breaks(),
-            Branch::IfLet(branch_if_let) => branch_if_let.always_breaks(),
-            Branch::Match(branch_match) => branch_match.always_breaks(),
-            Branch::ShortHand(branch_short_hand) => branch_short_hand.always_breaks(),
+            Branch::Let(branch_let) => branch_let.pure_break(),
+            Branch::IfLet(branch_if_let) => branch_if_let.pure_break(),
+            Branch::Match(branch_match) => branch_match.pure_break(),
+            Branch::ShortHand(branch_short_hand) => branch_short_hand.pure_break(),
         }
     }
 
     pub fn fut_expr(&self) -> &Expr {
         match self {
             Branch::Let(branch_let) => &branch_let.fut_expr,
-            Branch::IfLet(branch_if_let) => &branch_if_let.fut_expr,
+            Branch::IfLet(BranchIfLet {
+                if_arm:
+                    BranchIfLetIfArm {
+                        cond: Expr::Let(ExprLet { expr: fut_expr, .. }),
+                        ..
+                    },
+            }) => fut_expr,
+            Branch::IfLet(BranchIfLet {
+                if_arm: BranchIfLetIfArm { cond: fut_expr, .. },
+            }) => fut_expr,
             Branch::Match(branch_match) => &branch_match.fut_expr,
             Branch::ShortHand(branch_short_hand) => &branch_short_hand.fut_expr,
         }

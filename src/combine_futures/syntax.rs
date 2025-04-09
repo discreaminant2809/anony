@@ -21,6 +21,8 @@ pub(super) struct Input {
     pub movability: Option<Token![move]>,
     pub branches: Vec<Branch>,
     pub continue_collector: Option<ExprClosure>,
+    #[allow(dead_code)]
+    pub comma: Option<Token![,]>,
 }
 
 impl Parse for Input {
@@ -36,11 +38,13 @@ impl Parse for Input {
         })
         .collect::<Result<Vec<_>, _>>()?;
         let continue_collector = input.peek(Token![|]).then(|| input.parse()).transpose()?;
+        let comma = input.parse()?;
 
         Ok(Self {
             movability,
             branches,
             continue_collector,
+            comma,
         })
     }
 }

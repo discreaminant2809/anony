@@ -25,7 +25,7 @@ pub struct BranchLetElseArm {
 }
 
 impl BranchLet {
-    pub fn always_breaks(&self) -> bool {
+    pub fn pure_break(&self) -> bool {
         !matches!(
             self.else_arm,
             Some(BranchLetElseArm {

@@ -27,13 +27,13 @@ pub struct BranchMatchArmGuard {
 }
 
 impl BranchMatch {
-    pub fn always_breaks(&self) -> bool {
-        self.arms.iter().all(BranchMatchArm::always_breaks)
+    pub fn pure_break(&self) -> bool {
+        self.arms.iter().all(BranchMatchArm::pure_break)
     }
 }
 
 impl BranchMatchArm {
-    fn always_breaks(&self) -> bool {
+    fn pure_break(&self) -> bool {
         matches!(self.control_flow, CfToken::Break(_))
     }
 }
