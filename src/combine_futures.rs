@@ -1,9 +1,9 @@
 use quote::ToTokens;
 use syn::{Expr, ExprLet, Ident};
 use syntax::{
-    Branch, BranchIfLet, BranchIfLetElseArm, BranchIfLetElseArmDirection, BranchIfLetIfArm,
-    BranchLet, BranchLetElseArm, BranchMatch, BranchMatchArm, BranchMatchArmGuard, BranchShortHand,
-    CfToken, Input,
+    Branch, BranchIf, BranchIfElseArm, BranchIfElseArmDirection, BranchIfIfArm, BranchLet,
+    BranchLetElseArm, BranchMatch, BranchMatchArm, BranchMatchArmGuard, BranchShortHand, CfToken,
+    Input,
 };
 
 use crate::{pm2, utils};
@@ -53,10 +53,7 @@ fn pure_breaks(input: &Input, mut on_pure_break_branch: impl FnMut(&Branch)) -> 
 
 /// I'm tired of `quote_spanned! { Span::mixed_site()=> ... }` already, so it exists.
 ///
-/// Rust analyzer, use this:
-/// ```
-/// quote_mixed_site! {}
-/// ```
+/// Rust analyzer, use this: `quote_mixed_site! {}`
 macro_rules! quote_mixed_site {
     { $($tt:tt)* } => { ::quote::quote_spanned! { $crate::pm2::Span::mixed_site()=> $($tt)* } };
 }
@@ -161,12 +158,9 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
                     Branch::Let(branch) => {
                         handler_of_branch_let(branch, fut_ident, any_pure_break, is_cyclic)
                     }
-                    Branch::IfLet(branch_if_let) => handler_of_branch_if_let(
-                        branch_if_let,
-                        fut_ident,
-                        any_pure_break,
-                        is_cyclic,
-                    ),
+                    Branch::If(branch_if) => {
+                        handler_of_branch_if(branch_if, fut_ident, any_pure_break, is_cyclic)
+                    }
                     Branch::Match(branch_match) => {
                         handler_of_branch_match(branch_match, fut_ident, any_pure_break, is_cyclic)
                     }
@@ -531,23 +525,23 @@ fn handler_of_branch_match(
     }
 }
 
-fn handler_of_branch_if_let(
-    BranchIfLet { if_arm }: &BranchIfLet,
+fn handler_of_branch_if(
+    BranchIf { if_arm }: &BranchIf,
     fut_ident: &Ident,
     any_pure_break: bool,
     is_cyclic: bool,
 ) -> pm2::TokenStream {
     fn handler_of_else_arm(
-        BranchIfLetElseArm {
+        BranchIfElseArm {
             else_token,
             direction,
-        }: &BranchIfLetElseArm,
+        }: &BranchIfElseArm,
         fut_ident: &Ident,
         any_pure_break: bool,
         is_cyclic: bool,
     ) -> pm2::TokenStream {
         match direction {
-            BranchIfLetElseArmDirection::End {
+            BranchIfElseArmDirection::End {
                 control_flow, body, ..
             } => {
                 let decision = decision(
@@ -560,9 +554,9 @@ fn handler_of_branch_if_let(
 
                 quote_mixed_site! { #else_token { #decision } }
             }
-            BranchIfLetElseArmDirection::ElseIf(branch_if_let_if_arm) => {
+            BranchIfElseArmDirection::ElseIf(branch_if_if_arm) => {
                 let handler_of_if_arm = handler_of_if_arm(
-                    branch_if_let_if_arm,
+                    branch_if_if_arm,
                     fut_ident,
                     any_pure_break,
                     is_cyclic,
@@ -575,14 +569,14 @@ fn handler_of_branch_if_let(
     }
 
     fn handler_of_if_arm(
-        BranchIfLetIfArm {
+        BranchIfIfArm {
             if_token,
             cond,
             control_flow,
             then_arm,
             else_arm,
             ..
-        }: &BranchIfLetIfArm,
+        }: &BranchIfIfArm,
         fut_ident: &Ident,
         any_pure_break: bool,
         is_cyclic: bool,

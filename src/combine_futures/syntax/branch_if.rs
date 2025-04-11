@@ -4,28 +4,28 @@ use syn::{Block, Expr, Token, parse::Parse};
 use super::CfToken;
 
 #[derive(ToTokens)]
-pub struct BranchIfLet {
-    pub if_arm: BranchIfLetIfArm,
+pub struct BranchIf {
+    pub if_arm: BranchIfIfArm,
 }
 
 #[derive(ToTokens)]
-pub struct BranchIfLetElseArm {
+pub struct BranchIfElseArm {
     pub else_token: Token![else],
-    pub direction: BranchIfLetElseArmDirection,
+    pub direction: BranchIfElseArmDirection,
 }
 
 #[derive(ToTokens)]
-pub enum BranchIfLetElseArmDirection {
+pub enum BranchIfElseArmDirection {
     End {
         fat_arrow_token: Token![=>],
         control_flow: CfToken,
         body: Block,
     },
-    ElseIf(Box<BranchIfLetIfArm>),
+    ElseIf(Box<BranchIfIfArm>),
 }
 
 #[derive(ToTokens)]
-pub struct BranchIfLetIfArm {
+pub struct BranchIfIfArm {
     pub if_token: Token![if],
     pub cond: Expr,
 
@@ -34,10 +34,10 @@ pub struct BranchIfLetIfArm {
     pub then_arm: Block,
 
     // It's required for exhaustiveness anyway. It's so we don't need to `unwrap` in the code.
-    pub else_arm: BranchIfLetElseArm,
+    pub else_arm: BranchIfElseArm,
 }
 
-impl BranchIfLet {
+impl BranchIf {
     /// Recursively determine the "always break" property across arms.
     /// `false` if any arm is `continue`.
     pub fn pure_break(&self) -> bool {
@@ -45,23 +45,23 @@ impl BranchIfLet {
     }
 }
 
-impl BranchIfLetElseArm {
+impl BranchIfElseArm {
     fn pure_break(&self) -> bool {
         match &self.direction {
             // We reach the last `else` branch. No more to go further
-            BranchIfLetElseArmDirection::End { control_flow, .. } => control_flow.is_break(),
-            BranchIfLetElseArmDirection::ElseIf(if_arm) => if_arm.pure_break(),
+            BranchIfElseArmDirection::End { control_flow, .. } => control_flow.is_break(),
+            BranchIfElseArmDirection::ElseIf(if_arm) => if_arm.pure_break(),
         }
     }
 }
 
-impl BranchIfLetIfArm {
+impl BranchIfIfArm {
     fn pure_break(&self) -> bool {
         self.control_flow.is_break() && self.else_arm.pure_break()
     }
 }
 
-impl Parse for BranchIfLet {
+impl Parse for BranchIf {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(Self {
             if_arm: input.parse()?,
@@ -69,17 +69,17 @@ impl Parse for BranchIfLet {
     }
 }
 
-impl Parse for BranchIfLetElseArm {
+impl Parse for BranchIfElseArm {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let else_token = input.parse()?;
         let direction = if input.peek(Token![=>]) {
-            BranchIfLetElseArmDirection::End {
+            BranchIfElseArmDirection::End {
                 fat_arrow_token: input.parse()?,
                 control_flow: input.parse()?,
                 body: input.parse()?,
             }
         } else if input.peek(Token![if]) {
-            BranchIfLetElseArmDirection::ElseIf(Box::new(input.parse()?))
+            BranchIfElseArmDirection::ElseIf(Box::new(input.parse()?))
         } else {
             return Err(input.error("expected `=>` or `if`"));
         };
@@ -91,7 +91,7 @@ impl Parse for BranchIfLetElseArm {
     }
 }
 
-impl Parse for BranchIfLetIfArm {
+impl Parse for BranchIfIfArm {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let if_token = input.parse()?;
         let cond = input.parse()?;

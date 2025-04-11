@@ -1,7 +1,7 @@
 use derive_quote_to_tokens::ToTokens;
 use syn::{Expr, ExprLet, Token, parse::Parse};
 
-use super::{BranchIfLet, BranchIfLetIfArm, BranchLet, BranchMatch, BranchShortHand};
+use super::{BranchIf, BranchIfIfArm, BranchLet, BranchMatch, BranchShortHand};
 
 /// Branch containing a future that will be run concurrently.
 #[derive(ToTokens)]
@@ -9,7 +9,7 @@ pub enum Branch {
     /// `let`-like branch.
     Let(BranchLet),
     /// `if let`-like branch.
-    IfLet(BranchIfLet),
+    If(BranchIf),
     /// `match`-like branch.
     Match(BranchMatch),
     /// Short-hand for `let`-like branch.
@@ -20,7 +20,7 @@ impl Branch {
     pub fn is_pure_break(&self) -> bool {
         match self {
             Branch::Let(branch_let) => branch_let.pure_break(),
-            Branch::IfLet(branch_if_let) => branch_if_let.pure_break(),
+            Branch::If(branch_if) => branch_if.pure_break(),
             Branch::Match(branch_match) => branch_match.pure_break(),
             Branch::ShortHand(branch_short_hand) => branch_short_hand.pure_break(),
         }
@@ -29,15 +29,15 @@ impl Branch {
     pub fn fut_expr(&self) -> &Expr {
         match self {
             Branch::Let(branch_let) => &branch_let.fut_expr,
-            Branch::IfLet(BranchIfLet {
+            Branch::If(BranchIf {
                 if_arm:
-                    BranchIfLetIfArm {
+                    BranchIfIfArm {
                         cond: Expr::Let(ExprLet { expr: fut_expr, .. }),
                         ..
                     },
             }) => fut_expr,
-            Branch::IfLet(BranchIfLet {
-                if_arm: BranchIfLetIfArm { cond: fut_expr, .. },
+            Branch::If(BranchIf {
+                if_arm: BranchIfIfArm { cond: fut_expr, .. },
             }) => fut_expr,
             Branch::Match(branch_match) => &branch_match.fut_expr,
             Branch::ShortHand(branch_short_hand) => &branch_short_hand.fut_expr,
@@ -50,7 +50,7 @@ impl Parse for Branch {
         if input.peek(Token![let]) {
             Ok(Self::Let(input.parse()?))
         } else if input.peek(Token![if]) {
-            Ok(Self::IfLet(input.parse()?))
+            Ok(Self::If(input.parse()?))
         } else if input.peek(Token![match]) {
             Ok(Self::Match(input.parse()?))
         } else if input.peek(Token![break]) || input.peek(Token![continue]) {

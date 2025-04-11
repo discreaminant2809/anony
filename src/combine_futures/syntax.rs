@@ -4,14 +4,14 @@ use syn::{
 };
 
 mod branch;
-mod branch_if_let;
+mod branch_if;
 mod branch_let;
 mod branch_match;
 mod branch_short_hand;
 mod cf_token;
 
 pub(super) use branch::*;
-pub(super) use branch_if_let::*;
+pub(super) use branch_if::*;
 pub(super) use branch_let::*;
 pub(super) use branch_match::*;
 pub(super) use branch_short_hand::*;

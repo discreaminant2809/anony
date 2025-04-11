@@ -326,11 +326,11 @@ pub fn tuple(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Possible Differences from Other Implementations
 ///
-/// * `join!` returns an instance of an anonymous type that implements [`Future`](std::future::Future),
+/// * `join!` returns an instance of an anonymous type that implements [`Future`],
 ///   instead of requiring it to be inside an `async` block. You will receive a warning if you neither
 ///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * Input futures must implement [`IntoFuture`](std::future::IntoFuture).
+/// * Input futures must implement [`IntoFuture`].
 ///
 /// * The returned future is (generally) smaller in size and more efficient.
 ///
@@ -410,11 +410,11 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Possible Differences from Other Implementations
 ///
-/// * `join_cyclic!` returns an instance of an anonymous type that implements [`Future`](std::future::Future),
+/// * `join_cyclic!` returns an instance of an anonymous type that implements [`Future`],
 ///   instead of requiring it to be inside an `async` block. You will receive a warning if you neither
 ///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * Input futures must implement [`IntoFuture`](std::future::IntoFuture).
+/// * Input futures must implement [`IntoFuture`].
 ///
 /// * The returned future is (generally) smaller in size and more efficient.
 ///
@@ -526,11 +526,11 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Possible Differences from Other Implementations
 ///
-/// * `try_join!` returns an instance of an anonymous type that implements [`Future`](std::future::Future),
+/// * `try_join!` returns an instance of an anonymous type that implements [`Future`],
 ///   instead of requiring it to be inside an `async` block. You will receive a warning if you neither
 ///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * Input futures must implement [`IntoFuture`](std::future::IntoFuture),
+/// * Input futures must implement [`IntoFuture`],
 ///   and their outputs are not limited to [`Result`] types (see the table above for supported types).
 ///
 /// * The returned future is (generally) smaller in size and more efficient.
@@ -658,11 +658,11 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Possible Differences from Other Implementations
 ///
-/// * `try_join_cyclic!` returns an instance of an anonymous type that implements [`Future`](std::future::Future),
+/// * `try_join_cyclic!` returns an instance of an anonymous type that implements [`Future`],
 ///   instead of requiring it to be inside an `async` block. You will receive a warning if you neither
 ///   `.await`, [`poll`](std::future::Future::poll), nor return it.
 ///
-/// * Input futures must implement [`IntoFuture`](std::future::IntoFuture),
+/// * Input futures must implement [`IntoFuture`],
 ///   and their outputs are not limited to [`Result`] types (see the table above for supported types).
 ///
 /// * The returned future is (generally) smaller in size and more efficient.
@@ -731,22 +731,357 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
         .into()
 }
 
-#[allow(missing_docs)]
+/// Runs futures concurrently, where each one decides-on completion-whether to let others continue or short-circuit.
+///
+/// # Overview
+///
+/// This macro is a fusion of `join`, `select`, `race`, `race_ok`, etc. They all share a common theme:
+/// running futures concurrently, but differ in how they handle outputs—often implicitly through [`Result`],
+/// or with limited support for pattern matching.
+/// This macro takes a fully-fledged approach, letting you explicitly determine when to `continue` and `break`,
+/// using Rust-like, expressive syntax.
+///
+/// # Syntax
+///
+/// The general syntax is as follows:
+/// ```rust ignore
+/// combine_futures! {
+///     $(move)?
+///     $($branch:Branch)*
+///     $($continue_collector:ContinueCollector $(,)?)?
+/// }
+/// ```
+///
+/// ## Arm
+///
+/// - `Arm` `=>` (`ArmWithoutBlock`|`ArmWithBlock`)
+/// - `ArmWithoutBlock` `=>` `Directive $($expr:expr_without_block)?`
+/// - `ArmWithBlock` `=>` `Directive $expr:expr_with_block`
+/// - `BlockArm` `=>` `Directive $block:block`
+/// - `Directive` `=>` (`continue`|`break`)
+///
+/// An arm consists of a directive that specifies whether to continue or break, along with an expression
+/// run when it is chosen. It can use variables from the same branch, or captured variables from the macro.
+/// [See here](https://doc.rust-lang.org/reference/expressions.html) for what counts as an expression with or without a block.
+///
+/// Note that the expression can be omitted. In this case, the arm is considered an `ArmWithoutBlock`.
+///
+/// ## Branch
+///
+/// - `Branch` `=>` (`LetBranch`|`IfBranch`|`MatchBranch`)
+///
+/// There are 3 main types of branches:
+///
+/// ### `let` branch
+///
+/// - `LetBranch` `=>` `let $pat:pat = $fut_expr:expr $(else => $else_arm:Arm)? => `(`$arm:ArmWithoutBlock,`|`$arm:ArmWithBlock $(,)?`)
+///
+/// - (Shorthand) `=>` `Directive `(`$fut_expr:expr_without_block,`|`$fut_expr:expr_with_block $(,)?`),
+///   equivalent to `let x = $fut_expr => Directive x,`
+///
+/// It is analogous to `let` and `let`-`else` expressions.
+///
+/// Example:
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let res = combine_futures! {
+///     let x = async { 2 } => continue x,
+///     continue async { 2 }, // Shorthand syntax for the above.
+///     let Some(x) = async { Some(2) } else => continue -1 => continue x + 1,
+/// }.await;
+///
+/// assert_eq!(res, (2, 2, 3));
+/// # });
+/// ```
+///
+/// ### `if`/`if let` branch
+///
+/// - `IfBranch` `=>` `if `(`$fut_expr`|`let $pat = $fut_expr`)` => $then_arm:BlockArm => else `(`$else_arm:BlockArm`|`ContinueIf`)
+/// - `ContinueIf` `=>` `if `(`$expr`|`let $pat = $expr`)` => $then_arm:BlockArm => else `(`$else_arm:BlockArm`|`ContinueIf`)
+///
+/// It is analogous to `if` and `if let` expressions.
+///
+/// **Note**: An expression in an arm of this branch must be a block expression.
+///
+/// Example:
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// # use std::error::Error;
+/// let res = combine_futures! {
+///     if async { false } => continue {
+///         unreachable!();
+///     } else if 142_857 * 7 == 999_999 => continue {
+///         2
+///     } else => break {
+///         unreachable!();
+///     }
+///
+///     if let Ok(m) = async { Ok::<_, Box<dyn Error>>("message") } => continue {
+///         m
+///     } else => continue {
+///         "no message"
+///     }
+/// }.await;
+///
+/// assert_eq!(res, (2, "message"));
+/// # });
+/// ```
+///
+/// ### `match` branch
+///
+/// - `MatchBranch` `=>` `match $fut_expr { $($match_arm:MatchArm)* }`
+/// - `MatchArm` `=>` `$pat:pat $($if_guard:expr)? => `(`$arm:ArmWithoutBlock,` | `$arm:ArmWithBlock $(,)?`)
+///
+/// It is analogous to `match` expressions.
+///
+/// Example:
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let res = combine_futures! {
+///     match async { &[1, 2, 3][..] } {
+///         [1, 2, 3, 4] => break unreachable!(),
+///         &[1, 2, x] if x > 2 => break x,
+///         arr => break {
+///             arr.len() as _
+///         }
+///     }
+/// }.await;
+///
+/// assert_eq!(res, 3);
+/// # });
+/// ```
+///
+/// ## Continue collector
+///
+/// `ContinueCollector` `=>` (`||`|`|$first_param:param $(, $param:param)* $(,)?|`)` `(`$expr:expr`|` $(-> $ret_ty:ty)? $block:block`)
+///
+/// It is analogous to closures.
+///
+/// Example:
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let res = combine_futures! {
+///     || -1
+/// }.await;
+///
+/// assert_eq!(res, -1);
+/// # });
+/// ```
+///
+/// # Specifications
+///
+/// This macro returns a future that can be `.await`ed or polled.
+/// (It will be refered as an instance implementing [`Future`] in this part)
+///
+/// A *branch* mounts a future and runs it to completion. The output of the future goes through its *arms*,
+/// which act like handlers. Only one arm will be picked.
+/// Each arm is associated with a *control flow directive*, either `continue` or `break`,
+/// and such an arm is called a *continue arm* or *break arm*, respectively. There is always one arm.
+///
+/// - On `continue`, the mapped output may be retained (or not, depending on optimizations), and the future is not polled again.
+///   When all branches resolve without short-circuiting, that output-alongside other outputs-is collected into
+///   a tuple, or something else provided by the *continue collector* at the end of the macro.
+///   All continue arms in the same branch must return the same type.
+/// - On `break`, the mapped output becomes the output of the macro.
+///   (Returns [`Poll::Ready`](::core::task::Poll::Ready) with that output).
+///
+/// There are 3 types of branches:
+///
+/// - `let` branch: runs a future, pattern matches the output, and chooses an arm (the second if there is an `else` arm),
+///   or chooses the `else` arm if specified and the match fails.
+///   If no the `else` arm is specified, the pattern must be irrefutable.
+/// - `if`/`if let` branch: runs a future. If the output is `true` for `if`, or the match succeeds for `if let`,
+///   the `then` arm is chosen. Otherwise, the `else` arm runs or the `if` chain continues,
+///   just like with a standard `if`/`if let`.
+/// - `match` branch: runs a future, matches the output against match arms, and commits to one, like a `match` expression.
+///   The match must be exhaustive.
+///
+/// A *pure-break* branch is a branch with only break arms.
+///
+/// - When such a branch exists, the continue collector cannot be specified, and the macro's output is solely
+///   determined by the break arms. All outputs from continue arms are ignored.
+///
+/// ```compile_fail
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let res = combine_futures! {
+///     // This branch is pure-break
+///     match async { 1 } {
+///         1 => break,
+///         _ => break,
+///     }
+///     continue async { "5" },
+///     |_, _| {} // Compile error: continue collector cannot be specified
+/// }.await;
+/// # });
+/// ```
+///
+/// - When no such branch exists and no continue collector is specified, all outputs from continue arms are collected
+///   into a tuple (even an unary tuple or unit type), and all break arms must return the same tuple type.
+///   A custom continue collector can be used to unify all outputs.
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let res = combine_futures! {
+///     match async { 1 } {
+///         1 => break ((), "6"),
+///         _ => continue,
+///     }
+///     continue async { "2" },
+/// }.await;
+///
+/// assert_eq!(res, ((), "6"));
+/// # });
+/// ```
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let res = combine_futures! {
+///     match async { 2 } {
+///         1 => break "6".to_owned(),
+///         _ => continue 1,
+///     }
+///     continue async { 2 },
+///     
+///     |a, b| format!("{a}{b}")
+/// }.await;
+///
+/// assert_eq!(res, "12");
+/// # });
+/// ```
+///
+/// The macro can capture variables from outside, similar to closures and `async` blocks.
+/// These are used in arms, `if` guards, and continue collectors.
+/// By default, it captures by reference.
+/// Use the `move` keyword to capture by value, like closures and `async` blocks.
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// let x = 2;
+/// let s = String::from("2");
+///
+/// let fut = combine_futures! {
+///     move
+///     let a = async { 4 } => continue a + x,
+///     |res| s.parse::<i32>().unwrap() + res,
+/// };
+///
+/// fn assert_static<T: 'static>(_: T) {}
+/// assert_static(fut);
+/// # });
+/// ```
+///
+/// **Note**: Regardless of the `move` keyword, futures mounted in branches are always moved,
+/// and the macro cannnot consume captured variables-even with `move`.
+///
+/// Futures inside the macro are guaranteed to be dropped when the macro itself is dropped.
+/// However, during its lifetime, the order in which they are dropped is unspecified.
+///
+/// The macro implements [`Unpin`] if all futures it contains also implement [`Unpin`].
+///
+/// In a single poll instance, branches are always polled in the order they are written.  
+/// This may introduce bias and starvation.
+/// Consider using [`combine_futures_cyclic!`] for a fairer variant.
+///
+/// # Empty macro
+///
+/// If there are no branches, it resolves to the unit type. Also, based on the specification,
+/// it is also considered as not having a pure-break branch, so a continue collector (without parameters) is allowed.
+///
+/// # Ergonomics
+///
+/// Some considerations:
+///
+/// - Removing the need for `=>`?
+///   - Might cause a lot of syntactic ambiguity.
+/// - Allow consumption of captured variables in break arms and the continue collector?
+///   - Could be enabled with coroutines, which are right now... unstable.
+///     Coroutines can be mimicked with `async` blocks, but:
+///     - Should an `async` block without self-referential content be safely considered [`Unpin`]?
+///     - The workaround introduces more overhead compared to the current implementation.
+/// - Allow arbitrary `break`/`continue` inside a block, instead of a "directive"?
+///   - These keywords can be hidden in macros.
+///   - `continue` can't carry a value. One option is to make it implicit, and use `break` as the only signal.
+///     Even then, macro limitations present challenges, not to mention optimizations.
+///     They may be possible if this macro... is a first-class syntax.
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn combine_futures(token_stream: pm::TokenStream) -> pm::TokenStream {
     combine_futures::imp(token_stream, false)
-        .unwrap_or_else(|e| e.into_compile_error())
+        .unwrap_or_else(|e| {
+            let tt = e.into_compile_error();
+            // Wrap in an additional braces, since there may be multiple instances of `compile_error!`,
+            // which will generate weird error messages if the macro is assigned to a variable.
+            quote::quote! {{ #tt }}
+        })
         .into()
 }
 
-#[allow(missing_docs)]
+/// Runs futures concurrently, where each one decides-on completion-whether to let others continue or short-circuit.
+/// Uses a less deterministic polling order.
+///
+/// The only difference between this macro and [`combine_futures!`] is the polling order.
+/// In a single poll instance, futures are polled in an unspecified order, but each future is guaranteed to be polled once.
+///
+/// For all other details, see [`combine_futures!`] for full specifications.
+///
+/// # Examples
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures_cyclic;
+/// let res = combine_futures_cyclic! {
+///     match async { 2 } {
+///         1 => break "6".to_owned(),
+///         _ => continue 1,
+///     }
+///     continue async { 2 },
+///     
+///     |a, b| format!("{a}{b}")
+/// }.await;
+///
+/// assert_eq!(res, "12");
+/// # });
+/// ```
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures_cyclic;
+/// let x = 2;
+/// let s = String::from("2");
+///
+/// let fut = combine_futures_cyclic! {
+///     move
+///     let a = async { 4 } => continue a + x,
+///     |res| s.parse::<i32>().unwrap() + res,
+/// };
+///
+/// fn assert_static<T: 'static>(_: T) {}
+/// assert_static(fut);
+/// # });
+/// ```
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
 pub fn combine_futures_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
     combine_futures::imp(token_stream, true)
-        .unwrap_or_else(|e| e.into_compile_error())
+        .unwrap_or_else(|e| {
+            let tt = e.into_compile_error();
+            // Wrap in an additional braces, since there may be multiple instances of `compile_error!`,
+            // which will generate weird error messages if the macro is assigned to a variable.
+            quote::quote! {{ #tt }}
+        })
         .into()
 }
