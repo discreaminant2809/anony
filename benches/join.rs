@@ -1,6 +1,8 @@
+#![allow(deprecated)]
+
 use std::{array, future::poll_fn, hint::black_box, task::Poll};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use futures_concurrency::future::Join;
 use tokio::runtime::Runtime;
 

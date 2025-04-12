@@ -79,12 +79,22 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         pm2::Span::mixed_site(),
     );
 
+    let mut fut_count = pm2::Literal::usize_unsuffixed(input.branches.len());
+    fut_count.set_span(pm2::Span::mixed_site());
+    let fut_count = fut_count;
+
     let [to_skip_ty, to_skip_ident, to_skip_init] = to_skip(is_cyclic, input.branches.len() as _);
-    let mut_ref_to_skip_ty = if is_cyclic {
-        quote_mixed_site! { &mut #to_skip_ty }
-    } else {
-        quote_mixed_site! {}
-    };
+    let update_to_skip = is_cyclic.then(|| {
+        quote_mixed_site! {
+            let #to_skip_ident = (
+                ::core::mem::replace(
+                    #to_skip_ident,
+                    *#to_skip_ident + ::core::num::Wrapping(1),
+                )
+                + ::core::num::Wrapping(<*mut _>::addr(cx) as _)
+            ) % ::core::num::Wrapping(#fut_count);
+        }
+    });
 
     let fut_generics = utils::i_idents("F", input.branches.len());
 
@@ -120,7 +130,7 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         FnMut(
             #(&mut #fut_reprs,)*
             &mut Context<'_>,
-            #mut_ref_to_skip_ty
+            #to_skip_ty
         ) -> Poll<O>
     };
     let bounded_generics = quote_mixed_site! {<
@@ -249,10 +259,6 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         }
     };
 
-    let mut fut_count = pm2::Literal::usize_unsuffixed(input.branches.len());
-    fut_count.set_span(pm2::Span::mixed_site());
-    let fut_count = fut_count;
-
     let polling_logic = if input.branches.is_empty() {
         // This case exists since the `is_cyclic` case causes `unreachable_code` if there's no branch.
         quote_mixed_site! {}
@@ -265,16 +271,10 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         });
 
         quote_mixed_site! {
-            const COUNT: #to_skip_ty = #fut_count;
-            let #to_skip_ident = ::core::mem::replace(
-                #to_skip_ident,
-                (*#to_skip_ident + 1) % COUNT
-            );
-
             if let ::core::ops::ControlFlow::Break(__o) = ::core::iter::Iterator::try_for_each(
                 &mut ::core::iter::Iterator::chain(
                     // If `COUNT` is 0, this loop will never be run!
-                    #to_skip_ident..COUNT, 0..#to_skip_ident
+                    #to_skip_ident.0..#fut_count, 0..#to_skip_ident.0
                 ),
                 |i| {
                     match i {
@@ -338,7 +338,13 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
                 // SAFETY: pinning projection.
                 let Self::Inner(#(#fut_idents,)* selector, #to_skip_ident) = unsafe { Pin::get_unchecked_mut(self) };
 
-                selector(#(#fut_idents,)* cx, #to_skip_ident)
+                #update_to_skip
+
+                selector(
+                    #(#fut_idents,)*
+                    cx,
+                    #to_skip_ident
+                )
             }
         }
 
@@ -373,21 +379,21 @@ fn to_skip(is_cyclic: bool, n: u128) -> [pm2::TokenStream; 3] {
     }
 
     let to_skip_ty = if n <= u8::MAX as _ {
-        quote_mixed_site! { ::core::primitive::u8 }
+        quote_mixed_site! { u8 }
     } else if n <= u16::MAX as _ {
-        quote_mixed_site! { ::core::primitive::u16 }
+        quote_mixed_site! { u16 }
     } else if n <= u32::MAX as _ {
-        quote_mixed_site! { ::core::primitive::u32 }
+        quote_mixed_site! { u32 }
     } else if n <= u64::MAX as _ {
-        quote_mixed_site! { ::core::primitive::u64 }
+        quote_mixed_site! { u64 }
     } else {
-        quote_mixed_site! { ::core::primitive::u128 }
+        quote_mixed_site! { u128 }
     };
 
     [
-        to_skip_ty,
-        quote_mixed_site! { to_skip },
-        quote_mixed_site! { 0 },
+        quote_mixed_site! { ::core::num::Wrapping<::core::primitive::#to_skip_ty> },
+        quote_mixed_site! { __to_skip },
+        quote_mixed_site! { ::core::num::Wrapping(0) },
     ]
 }
 
