@@ -35,8 +35,7 @@ assert_eq!(x.1, [1, 3, 5]);
 ```
 
 [`combine_futures!`] and [`combine_futures_cyclic!`]:
-Runs futures concurrently, where each one decides-on completion-whether to let others continue or short-circuit.
-Requires the `future` feature.
+General-purpose future combinators. Requires the `future` feature.
 
 ```rust
 let mut s = String::new();

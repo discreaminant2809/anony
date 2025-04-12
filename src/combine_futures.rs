@@ -131,7 +131,15 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
     >};
 
     let fut_idents = utils::i_idents(
-        Ident::new("fut", pm2::Span::mixed_site()),
+        Ident::new(
+            // Even tho we use mixed-site span, VS Code (prob the most common IDE for Rust) with rust-analyzer
+            // can somehow still refer to such variables (altho it's a compile error anyway).
+            // It's only a concern if they're in the selector closure where user code is interleaved with.
+            //
+            // Added `__` prefix to avoid messing up with the auto-completion.
+            "__fut",
+            pm2::Span::mixed_site(),
+        ),
         input.branches.len(),
     );
 
@@ -147,74 +155,70 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
     });
 
     let o_idents = utils::i_idents(
-        Ident::new("o", pm2::Span::mixed_site()),
+        Ident::new("__o", pm2::Span::mixed_site()),
         input.branches.len(),
     );
 
     let fut_exprs = input.branches.iter().map(Branch::fut_expr);
     let movability = input.movability;
 
-    let handlers =
-        input
-            .branches
-            .iter()
-            .zip(&fut_idents)
-            .enumerate()
-            .map(|(i, (branch, fut_ident))| {
-                let handler = match branch {
-                    Branch::Let(branch) => {
-                        handler_of_branch_let(branch, fut_ident, any_pure_break, is_cyclic)
-                    }
-                    Branch::If(branch_if) => {
-                        handler_of_branch_if(branch_if, fut_ident, any_pure_break, is_cyclic)
-                    }
-                    Branch::Match(branch_match) => {
-                        handler_of_branch_match(branch_match, fut_ident, any_pure_break, is_cyclic)
-                    }
-                    Branch::ShortHand(branch_short_hand) => handler_of_branch_short_hand(
-                        branch_short_hand,
-                        fut_ident,
-                        any_pure_break,
-                        is_cyclic,
-                    ),
-                };
+    let handlers = input.branches.iter().zip(&fut_idents).enumerate().map(
+        |(i, (branch, fut_ident))| {
+            let handler = match branch {
+                Branch::Let(branch) => {
+                    handler_of_branch_let(branch, fut_ident, any_pure_break, is_cyclic)
+                }
+                Branch::If(branch_if) => {
+                    handler_of_branch_if(branch_if, fut_ident, any_pure_break, is_cyclic)
+                }
+                Branch::Match(branch_match) => {
+                    handler_of_branch_match(branch_match, fut_ident, any_pure_break, is_cyclic)
+                }
+                Branch::ShortHand(branch_short_hand) => handler_of_branch_short_hand(
+                    branch_short_hand,
+                    fut_ident,
+                    any_pure_break,
+                    is_cyclic,
+                ),
+            };
 
-                if pure_breaks
-                    .as_ref()
-                    .is_some_and(|pure_breaks| pure_breaks[i])
-                {
-                    quote_mixed_site! {
-                        'poll_scope: {
-                            if let ::core::task::Poll::Ready(o) = ::core::future::Future::poll(
-                                // SAFETY: pinning projection: the future is structurally pinned.
-                                unsafe { ::core::pin::Pin::new_unchecked(#fut_ident) },
-                                cx,
-                            ) {
-                                // Only `continue` arm sets the future, so no worry.
-                                #handler
-                            } else {
-                                done = false;
-                            }
+            if pure_breaks
+                .as_ref()
+                .is_some_and(|pure_breaks| pure_breaks[i])
+            {
+                quote_mixed_site! {
+                    'poll_scope: {
+                        if let ::core::task::Poll::Ready(__o) = ::core::future::Future::poll(
+                            // SAFETY: pinning projection: the future is structurally pinned.
+                            unsafe { ::core::pin::Pin::new_unchecked(#fut_ident) },
+                            __cx,
+                        ) {
+                            // Only `continue` arm sets the future, so no worry.
+                            #handler
+                        } else {
+                            __done = false;
                         }
                     }
-                } else {
-                    quote_mixed_site! {
-                        'poll_scope: {
-                            if let ::core::ops::ControlFlow::Continue(fut_inner) = #fut_ident {
-                                if let ::core::task::Poll::Ready(o) = ::core::future::Future::poll(
-                                    // SAFETY: pinning projection: the future is structurally pinned.
-                                    unsafe { ::core::pin::Pin::new_unchecked(fut_inner) },
-                                    cx,
-                                ) {
-                                    #handler
-                                } else {
-                                    done = false;
-                                }
+                }
+            } else {
+                quote_mixed_site! {
+                    'poll_scope: {
+                        if let ::core::ops::ControlFlow::Continue(__fut_inner) = #fut_ident {
+                            if let ::core::task::Poll::Ready(__o) = ::core::future::Future::poll(
+                                // SAFETY: pinning projection: the future is structurally pinned.
+                                unsafe { ::core::pin::Pin::new_unchecked(__fut_inner) },
+                                __cx,
+                            ) {
+                                #handler
+                            } else {
+                                __done = false;
                             }
                         }
                     }
                 }
-            });
+            }
+        },
+    );
 
     let continue_collector = if any_pure_break {
         quote_mixed_site! {}
@@ -227,7 +231,7 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         let many_none = (0..input.branches.len()).map(|_| quote_mixed_site! { None });
 
         quote_mixed_site! {
-            if done {
+            if __done {
                 let (#(::core::ops::ControlFlow::Break(#o_idents),)*) = (#(#fut_idents,)*) else {
                     unsafe { ::core::hint::unreachable_unchecked() }
                 };
@@ -267,7 +271,7 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
                 (*#to_skip_ident + 1) % COUNT
             );
 
-            if let ::core::ops::ControlFlow::Break(o) = ::core::iter::Iterator::try_for_each(
+            if let ::core::ops::ControlFlow::Break(__o) = ::core::iter::Iterator::try_for_each(
                 &mut ::core::iter::Iterator::chain(
                     // If `COUNT` is 0, this loop will never be run!
                     #to_skip_ident..COUNT, 0..#to_skip_ident
@@ -282,7 +286,7 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
                     ::core::ops::ControlFlow::Continue(())
                 }
             ) {
-                return ::core::task::Poll::Ready(o);
+                return ::core::task::Poll::Ready(__o);
             }
         }
     } else {
@@ -341,8 +345,8 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         #fut_ty::new
     })(
         #(#fut_exprs,)*
-        #movability |#(#fut_idents,)* cx, #to_skip_ident| {
-            let mut done = true;
+        #movability |#(#fut_idents,)* __cx, #to_skip_ident| {
+            let mut __done = true;
             #polling_logic
             #continue_collector
 
@@ -466,7 +470,7 @@ fn handler_of_branch_let(
     );
 
     quote_mixed_site! {
-        #let_token #pat #eq_token o #else_branch;
+        #let_token #pat #eq_token __o #else_branch;
         #decision
     }
 }
@@ -477,7 +481,7 @@ fn handler_of_branch_short_hand(
     any_pure_break: bool,
     is_cyclic: bool,
 ) -> pm2::TokenStream {
-    let body = quote_mixed_site! {o};
+    let body = quote_mixed_site! {__o};
     decision(
         Some(&body),
         control_flow,
@@ -533,7 +537,7 @@ fn handler_of_branch_match(
     });
 
     quote_mixed_site! {
-        #match_token o #match_content
+        #match_token __o #match_content
     }
 }
 
@@ -633,7 +637,7 @@ fn handler_of_branch_if(
                 pat,
                 eq_token,
                 ..
-            }) if is_fut_output => quote_mixed_site! { #(#attrs)* #let_token #pat #eq_token o },
+            }) if is_fut_output => quote_mixed_site! { #(#attrs)* #let_token #pat #eq_token __o },
             Expr::Let(ExprLet {
                 attrs,
                 let_token,
@@ -641,7 +645,7 @@ fn handler_of_branch_if(
                 eq_token,
                 expr,
             }) => quote_mixed_site! { #(#attrs)* #let_token #pat #eq_token (|| #expr)() },
-            _ if is_fut_output => quote_mixed_site! { o },
+            _ if is_fut_output => quote_mixed_site! { __o },
             cond => quote_mixed_site! { (|| #cond)() },
         };
 

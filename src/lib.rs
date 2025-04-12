@@ -33,8 +33,7 @@
 //! ```
 //!
 //! [`combine_futures!`] and [`combine_futures_cyclic!`]:
-//! Runs futures concurrently, where each one decides-on completion-whether to let others continue or short-circuit.
-//! Requires the `future` feature.
+//! General-purpose future combinators. Requires the `future` feature.
 //!
 //! ```rust
 //! # futures::executor::block_on(async {
@@ -801,7 +800,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// - `Directive` `=>` (`continue`|`break`)
 ///
 /// An arm consists of a directive that specifies whether to continue or break, along with an expression
-/// run when it is chosen. It can use variables from the same branch, or captured variables from the macro.
+/// run when it is chosen. At best, it can use variables from the same branch, or captured variables from the macro.
 /// [See here](https://doc.rust-lang.org/reference/expressions.html) for what counts as an expression with or without a block.
 ///
 /// Note that the expression can be omitted. In this case, the arm is considered an `ArmWithoutBlock`.
