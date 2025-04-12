@@ -35,7 +35,14 @@ pub(crate) fn imp(tt: crate::pm::TokenStream, is_cyclic: bool) -> syn::Result<pm
         pure_breaks(&input, |_| {})
     };
 
-    Ok(imp_impl(&input, pure_breaks, is_cyclic))
+    Ok(imp_impl(
+        &input,
+        pure_breaks,
+        // We have to unify both `is_cyclic` case with only one branch here to avoid modulo zero and `clippy::modulo_one`.
+        // Using round-robin on no branch and only 1 branch is just redundant regardless.
+        // See https://rust-lang.github.io/rust-clippy/master/index.html#modulo_one.
+        is_cyclic && input.branches.len() >= 2,
+    ))
 }
 
 fn pure_breaks(input: &Input, mut on_pure_break_branch: impl FnMut(&Branch)) -> Option<Vec<bool>> {
@@ -213,7 +220,7 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
         quote_mixed_site! {}
     } else {
         let continue_collector = input.continue_collector.as_ref().map_or_else(
-            || quote_mixed_site! { |#(#o_idents),*| (#(#o_idents),*) },
+            || quote_mixed_site! { |#(#o_idents),*| (#(#o_idents,)*) },
             |expr| expr.to_token_stream(),
         );
 
@@ -242,7 +249,10 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
     fut_count.set_span(pm2::Span::mixed_site());
     let fut_count = fut_count;
 
-    let polling_logic = if is_cyclic {
+    let polling_logic = if input.branches.is_empty() {
+        // This case exists since the `is_cyclic` case causes `unreachable_code` if there's no branch.
+        quote_mixed_site! {}
+    } else if is_cyclic {
         let handlers = handlers.enumerate().map(|(i, handler)| {
             let mut i = pm2::Literal::usize_unsuffixed(i);
             i.set_span(pm2::Span::mixed_site());
@@ -256,8 +266,10 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
                 #to_skip_ident,
                 (*#to_skip_ident + 1) % COUNT
             );
+
             if let ::core::ops::ControlFlow::Break(o) = ::core::iter::Iterator::try_for_each(
                 &mut ::core::iter::Iterator::chain(
+                    // If `COUNT` is 0, this loop will never be run!
                     #to_skip_ident..COUNT, 0..#to_skip_ident
                 ),
                 |i| {
