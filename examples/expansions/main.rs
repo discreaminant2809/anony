@@ -13,6 +13,7 @@
 
 mod anonymous_struct;
 mod combine_futures;
+mod combine_futures_cyclic;
 mod join;
 mod join_cyclic;
 mod try_join;

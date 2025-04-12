@@ -32,26 +32,49 @@
 //! assert_eq!(x.1, [1, 3, 5]);
 //! ```
 //!
-//! * [`join!`] and [`join_cyclic!`]: Join multiple futures.
-//!   Requires the `future` feature.
+//! [`combine_futures!`] and [`combine_futures_cyclic!`]:
+//! Runs futures concurrently, where each one decides-on completion-whether to let others continue or short-circuit.
+//! Requires the `future` feature.
 //!
 //! ```rust
 //! # futures::executor::block_on(async {
-//! use anony::join;
+//! # use anony::combine_futures;
+//! # use std::fmt::Write;
+//! let mut s = String::new();
 //!
-//! assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
+//! let fut = combine_futures! {
+//!     let ten = async { 10 } => continue {
+//!         s.write_fmt(format_args!("{ten}"));
+//!         ten
+//!     }
+//!     let zero = async { "0" } => continue s.push_str(zero),
+//! };
+//!
+//! assert_eq!(fut.await, (10, ()));
+//! assert_eq!(s, "100");
 //! # });
 //! ```
 //!
-//! * [`try_join!`] and [`try_join_cyclic!`]: Join multiple futures, short-circuiting on a "break" value.
-//!   Requires the `future` feature.
-//!
 //! ```rust
 //! # futures::executor::block_on(async {
-//! use anony::try_join;
+//! # use anony::combine_futures_cyclic;
+//! let mut x = 2;
 //!
-//! assert_eq!(try_join!(async { Some(2) }, async { Some("123") }).await, Some((2, "123")));
-//! assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
+//! let fut = combine_futures_cyclic! {
+//!     move
+//!     match async { Some(1) } {
+//!         Some(x) if x % 2 == 0 => continue,
+//!         _ => break {
+//!             x += 1;
+//!             x
+//!         }
+//!     }
+//!     continue async {},
+//!     |_, _| -1
+//! };
+//!
+//! assert_eq!(fut.await, 3);
+//! assert_eq!(x, 2);
 //! # });
 //! ```
 //!
@@ -63,7 +86,7 @@
 //!
 //! * `serde`: Derives [`Serialize`] for anonymous structs and tuples.
 //!   The [serde] crate must be included in your dependencies.
-//! * `future`: Enables [`Future`] anonymous types, such as [`join!`].
+//! * `future`: Enables [`Future`] anonymous types, such as [`combine_futures!`].
 //!
 //! # Nightly
 //!
@@ -751,7 +774,8 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Overview
 ///
-/// This macro is a fusion of `join`, `select`, `race`, `race_ok`, etc. They all share a common theme:
+/// This macro is a general-purpose future combinator.
+/// It is a fusion of `join`, `select`, `race`, `race_ok`, etc. They all share a common theme:
 /// running futures concurrently, but differ in how they handle outputs—often implicitly through [`Result`],
 /// or with limited support for pattern matching.
 /// This macro takes a fully-fledged approach, letting you explicitly determine when to `continue` and `break`,
@@ -802,13 +826,13 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// ```
 /// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
-/// let res = combine_futures! {
+/// let fut = combine_futures! {
 ///     let x = async { 2 } => continue x,
 ///     continue async { 2 }, // Shorthand syntax for the above.
 ///     let Some(x) = async { Some(2) } else => continue -1 => continue x + 1,
-/// }.await;
+/// };
 ///
-/// assert_eq!(res, (2, 2, 3));
+/// assert_eq!(fut.await, (2, 2, 3));
 /// # });
 /// ```
 ///
@@ -827,7 +851,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
 /// # use std::error::Error;
-/// let res = combine_futures! {
+/// let fut = combine_futures! {
 ///     if async { false } => continue {
 ///         unreachable!();
 ///     } else if 142_857 * 7 == 999_999 => continue {
@@ -841,9 +865,9 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///     } else => continue {
 ///         "no message"
 ///     }
-/// }.await;
+/// };
 ///
-/// assert_eq!(res, (2, "message"));
+/// assert_eq!(fut.await, (2, "message"));
 /// # });
 /// ```
 ///
@@ -859,7 +883,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// ```
 /// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
-/// let res = combine_futures! {
+/// let fut = combine_futures! {
 ///     match async { &[1, 2, 3][..] } {
 ///         [1, 2, 3, 4] => break unreachable!(),
 ///         &[1, 2, x] if x > 2 => break x,
@@ -867,9 +891,9 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///             arr.len() as _
 ///         }
 ///     }
-/// }.await;
+/// };
 ///
-/// assert_eq!(res, 3);
+/// assert_eq!(fut.await, 3);
 /// # });
 /// ```
 ///
@@ -884,11 +908,11 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// ```
 /// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
-/// let res = combine_futures! {
+/// let fut = combine_futures! {
 ///     || -1
-/// }.await;
+/// };
 ///
-/// assert_eq!(res, -1);
+/// assert_eq!(fut.await, -1);
 /// # });
 /// ```
 ///
@@ -908,6 +932,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///   All continue arms in the same branch must return the same type.
 /// - On `break`, the mapped output becomes the output of the macro.
 ///   (Returns [`Poll::Ready`](::core::task::Poll::Ready) with that output).
+///   All break arms across branches in the macro must return the same type.
 ///
 /// There are 3 types of branches:
 ///
@@ -926,9 +951,8 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///   determined by the break arms. All outputs from continue arms are ignored.
 ///
 /// ```compile_fail
-/// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
-/// let res = combine_futures! {
+/// let _fut = combine_futures! {
 ///     // This branch is pure-break
 ///     match async { 1 } {
 ///         1 => break,
@@ -936,8 +960,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///     }
 ///     continue async { "5" },
 ///     |_, _| {} // Compile error: continue collector cannot be specified
-/// }.await;
-/// # });
+/// };
 /// ```
 ///
 /// - When no such branch exists and no continue collector is specified, all outputs from continue arms are collected
@@ -947,22 +970,22 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// ```
 /// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
-/// let res = combine_futures! {
+/// let fut = combine_futures! {
 ///     match async { 1 } {
 ///         1 => break ((), "6"),
 ///         _ => continue,
 ///     }
 ///     continue async { "2" },
-/// }.await;
+/// };
 ///
-/// assert_eq!(res, ((), "6"));
+/// assert_eq!(fut.await, ((), "6"));
 /// # });
 /// ```
 ///
 /// ```
 /// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
-/// let res = combine_futures! {
+/// let fut = combine_futures! {
 ///     match async { 2 } {
 ///         1 => break "6".to_owned(),
 ///         _ => continue 1,
@@ -970,9 +993,9 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///     continue async { 2 },
 ///     
 ///     |a, b| format!("{a}{b}")
-/// }.await;
+/// };
 ///
-/// assert_eq!(res, "12");
+/// assert_eq!(fut.await, "12");
 /// # });
 /// ```
 ///
@@ -982,7 +1005,6 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// Use the `move` keyword to capture by value, like closures and `async` blocks.
 ///
 /// ```
-/// # futures::executor::block_on(async {
 /// # use anony::combine_futures;
 /// let x = 2;
 /// let s = String::from("2");
@@ -995,7 +1017,6 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// fn assert_static<T: 'static>(_: T) {}
 /// assert_static(fut);
-/// # });
 /// ```
 ///
 /// **Note**: Regardless of the `move` keyword, futures mounted in branches are always moved,
@@ -1012,8 +1033,84 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Empty macro
 ///
-/// If there are no branches, it resolves to the unit type. Also, based on the specification,
-/// it is also considered as not having a pure-break branch, so a continue collector (without parameters) is allowed.
+/// For a macro without branches, it is considered—as per the specifications—not to have a pure-break branch,
+/// so a continue collector is allowed.
+///
+/// Furthermore, since there are no branches, there is nothing to collect from.
+/// As a result, it resolves to the unit type if no continue collector is provided,
+/// and a continue collector requires no parameters.
+///
+/// # Similar constructs
+///
+/// A macro with only `continue` `let` branches is similar to `join`:
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// use futures::join;
+///
+/// assert_eq!(
+///     combine_futures! {
+///         continue async { 1 },
+///         continue async { 2 },
+///     }
+///     .await,
+///     join!(async { 1 }, async { 2 }),
+/// );
+/// # });
+/// ```
+///
+/// A macro with only `break` `let` branches is similar to `race`:
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// use futures_concurrency::future::Race;
+///
+/// assert_eq!(
+///     combine_futures! {
+///         break async { 1 },
+///         break async { 1 },
+///     }
+///     .await,
+///     (async { 1 }, async { 1 }).race().await,
+/// );
+/// # });
+/// ```
+///
+/// How about `try_join`?
+///
+/// ```
+/// # futures::executor::block_on(async {
+/// # use anony::combine_futures;
+/// use futures::try_join;
+///
+/// async fn fallible_fut() -> Result<i32, ()> {
+///     Ok(0)
+/// }
+///
+/// assert_eq!(
+///     combine_futures! {
+///         match fallible_fut() {
+///             Ok(x) => continue x,
+///             Err(e) => break Err(e),
+///         }
+///         match fallible_fut() {
+///             Ok(y) => continue y,
+///             Err(e) => break Err(e),
+///         }
+///         |x, y| Ok((x, y)),
+///     }
+///     .await,
+///     try_join!(
+///         fallible_fut(),
+///         fallible_fut(),
+///     ),
+/// );
+/// # });
+/// ```
+///
+/// And more—this macro is, after all, a generalization of many common future combinators!
 ///
 /// # Ergonomics
 ///
@@ -1031,6 +1128,10 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///   - `continue` can't carry a value. One option is to make it implicit, and use `break` as the only signal.
 ///     Even then, macro limitations present challenges, not to mention optimizations.
 ///     They may be possible if this macro... is a first-class syntax.
+///
+/// # Example Expansions
+///
+/// <https://github.com/discreaminant2809/anony/blob/master/examples/expansions/combine_futures.rs>
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
@@ -1088,6 +1189,10 @@ pub fn combine_futures(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_static(fut);
 /// # });
 /// ```
+///
+/// # Example Expansions
+///
+/// <https://github.com/discreaminant2809/anony/blob/master/examples/expansions/combine_futures_cyclic.rs>
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]

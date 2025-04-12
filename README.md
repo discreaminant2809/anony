@@ -34,23 +34,43 @@ assert_eq!(x.0, "discreaminant");
 assert_eq!(x.1, [1, 3, 5]);
 ```
 
-* [`join!`] and [`join_cyclic!`]: Join multiple futures.
-  Requires the `future` feature.
+[`combine_futures!`] and [`combine_futures_cyclic!`]:
+Runs futures concurrently, where each one decides-on completion-whether to let others continue or short-circuit.
+Requires the `future` feature.
 
 ```rust
-use anony::join;
+let mut s = String::new();
 
-assert_eq!(join!(async { 2 }, async { "123" }).await, (2, "123"));
+let fut = combine_futures! {
+    let ten = async { 10 } => continue {
+        s.write_fmt(format_args!("{ten}"));
+        ten
+    }
+    let zero = async { "0" } => continue s.push_str(zero),
+};
+
+assert_eq!(fut.await, (10, ()));
+assert_eq!(s, "100");
 ```
 
-* [`try_join!`] and [`try_join_cyclic!`]: Join multiple futures, short-circuiting on a "break" value.
-  Requires the `future` feature.
-
 ```rust
-use anony::try_join;
+let mut x = 2;
 
-assert_eq!(try_join!(async { Some(2) }, async { Some("123") }).await, Some((2, "123")));
-assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
+let fut = combine_futures_cyclic! {
+    move
+    match async { Some(1) } {
+        Some(x) if x % 2 == 0 => continue,
+        _ => break {
+            x += 1;
+            x
+        }
+    }
+    continue async {},
+    |_, _| -1
+};
+
+assert_eq!(fut.await, 3);
+assert_eq!(x, 2);
 ```
 
 ## Example Macro Expansions
@@ -61,7 +81,7 @@ assert_eq!(try_join!(async { Some(2) }, async { None::<i32> }).await, None);
 
 * `serde`: Derives [`Serialize`] for anonymous structs and tuples.
   The [serde] crate must be included in your dependencies.
-* `future`: Enables [`Future`] anonymous types, such as [`join!`].
+* `future`: Enables [`Future`] anonymous types, such as [`combine_futures!`].
 
 ## Nightly
 
@@ -77,7 +97,5 @@ anony = { git = "https://github.com/discreaminant2809/anony.git", branch = "nigh
 
 [`struct!`]: https://docs.rs/anony/latest/anony/macro.struct.html
 [`tuple!`]: https://docs.rs/anony/latest/anony/macro.tuple.html
-[`join!`]: https://docs.rs/anony/latest/anony/macro.join.html
-[`join_cyclic!`]: https://docs.rs/anony/latest/anony/macro.join_cyclic.html
-[`try_join!`]: https://docs.rs/anony/latest/anony/macro.try_join.html
-[`try_join_cyclic!`]: https://docs.rs/anony/latest/anony/macro.try_join_cyclic.html
+[`combine_futures!`]: https://docs.rs/anony/latest/anony/macro.combine_futures.html
+[`combine_futures_cyclic!`]: https://docs.rs/anony/latest/anony/macro.combine_futures_cyclic.html
