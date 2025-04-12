@@ -381,6 +381,10 @@ pub fn tuple(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
+#[deprecated(
+    since = "0.6.0",
+    note = "use `combine_futures(_cyclic)`, which does everything this macro does but more customizable"
+)]
 pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
     join::imp(token_stream, false, false)
         .unwrap_or_else(|e| e.into_compile_error())
@@ -465,6 +469,10 @@ pub fn join(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
+#[deprecated(
+    since = "0.6.0",
+    note = "use `combine_futures(_cyclic)`, which does everything this macro does but more customizable"
+)]
 pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
     join::imp(token_stream, false, true)
         .unwrap_or_else(|e| e.into_compile_error())
@@ -594,6 +602,10 @@ pub fn join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
+#[deprecated(
+    since = "0.6.0",
+    note = "use `combine_futures(_cyclic)`, which does everything this macro does but more customizable"
+)]
 pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
     join::imp(token_stream, true, false)
         .unwrap_or_else(|e| e.into_compile_error())
@@ -725,6 +737,10 @@ pub fn try_join(token_stream: pm::TokenStream) -> pm::TokenStream {
 #[proc_macro]
 #[cfg(feature = "future")]
 #[cfg_attr(docsrs, doc(cfg(feature = "future")))]
+#[deprecated(
+    since = "0.6.0",
+    note = "use `combine_futures(_cyclic)`, which does everything this macro does but more customizable"
+)]
 pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
     join::imp(token_stream, true, true)
         .unwrap_or_else(|e| e.into_compile_error())

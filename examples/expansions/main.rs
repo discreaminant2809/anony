@@ -7,7 +7,8 @@
     dropping_copy_types,
     clippy::unit_arg,
     clippy::redundant_closure_call,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    deprecated
 )]
 
 mod anonymous_struct;

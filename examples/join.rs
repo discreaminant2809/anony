@@ -1,6 +1,8 @@
+#![allow(deprecated)]
+
 use tokio::select;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 // We only demonstrate `join!` and not `join_cyclic!` since they do basically the same. They only differ in polling strategies
 #[tokio::main]

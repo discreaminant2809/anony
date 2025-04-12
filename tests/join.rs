@@ -1,8 +1,10 @@
+#![allow(deprecated)]
+
 use std::{
     cell::Cell,
-    future::{pending, Future, IntoFuture},
+    future::{Future, IntoFuture, pending},
     marker::PhantomPinned,
-    pin::{pin, Pin},
+    pin::{Pin, pin},
     rc::Rc,
     task::{Context, Poll},
     time::Duration,
@@ -156,7 +158,7 @@ fn should_poll_all_and_in_correct_ord() {
     assert!(monitor.0.has_polled_me.take());
     assert!(monitor.1.has_polled_me.take());
     assert!(!monitor.2.has_polled_me.take()); // it has completed in the #2, which `MaybeDone` is in the `Ready` state,
-                                              // in which the wrapped future won't actually be polled again
+    // in which the wrapped future won't actually be polled again
     assert!(monitor.3.has_polled_me.take());
     assert_eq!(monitor.0.poll_number.get(), 8);
     assert_eq!(monitor.1.poll_number.get(), 9);

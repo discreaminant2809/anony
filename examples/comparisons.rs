@@ -1,4 +1,4 @@
-#![allow(clippy::size_of_ref)]
+#![allow(clippy::size_of_ref, deprecated)]
 
 use std::future::Future;
 use std::mem::{size_of, size_of_val};

@@ -4,7 +4,11 @@
 
 ### Added
 
-- `combine_futures` macro, a generalization of `join!` and `select!`.
+- `combine_futures(_cyclic)` macro, a generalization of various future combinatorics, such as `join!` and `select!`.
+
+### Deprecated
+
+- `(try_)join(_cyclic)` macro.
 
 ## 0.5.3
 
