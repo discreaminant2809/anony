@@ -124,8 +124,8 @@ fn general_case_pure_break() {
             0
         }
 
-        if async { true } => continue {
-            "abc"
+        if async { true } => break {
+            0
         } else => break {
             dbg!(0)
         }
@@ -158,7 +158,7 @@ fn general_case_pure_break() {
                 &mut ControlFlow<(), F1>,
                 &mut ControlFlow<(), F2>,
                 &mut ControlFlow<(), F3>,
-                &mut ControlFlow<(), F4>,
+                &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
             ) -> Poll<O>,
@@ -169,7 +169,7 @@ fn general_case_pure_break() {
                 ControlFlow<(), F1>,
                 ControlFlow<(), F2>,
                 ControlFlow<(), F3>,
-                ControlFlow<(), F4>,
+                F4,
                 ControlFlow<(), F5>,
                 S,
             ),
@@ -186,7 +186,7 @@ fn general_case_pure_break() {
                 &mut ControlFlow<(), F1>,
                 &mut ControlFlow<(), F2>,
                 &mut ControlFlow<(), F3>,
-                &mut ControlFlow<(), F4>,
+                &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
             ) -> Poll<O>,
@@ -207,7 +207,7 @@ fn general_case_pure_break() {
                     ControlFlow::Continue(IntoFuture::into_future(__fut1)),
                     ControlFlow::Continue(IntoFuture::into_future(__fut2)),
                     ControlFlow::Continue(IntoFuture::into_future(__fut3)),
-                    ControlFlow::Continue(IntoFuture::into_future(__fut4)),
+                    IntoFuture::into_future(__fut4),
                     ControlFlow::Continue(IntoFuture::into_future(__fut5)),
                     selector,
                 )
@@ -225,7 +225,7 @@ fn general_case_pure_break() {
                 &mut ControlFlow<(), F1>,
                 &mut ControlFlow<(), F2>,
                 &mut ControlFlow<(), F3>,
-                &mut ControlFlow<(), F4>,
+                &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
             ) -> Poll<O>,
@@ -246,7 +246,7 @@ fn general_case_pure_break() {
                 &mut ControlFlow<(), F1>,
                 &mut ControlFlow<(), F2>,
                 &mut ControlFlow<(), F3>,
-                &mut ControlFlow<(), F4>,
+                &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
             ) -> Poll<O>,
@@ -341,21 +341,17 @@ fn general_case_pure_break() {
                 }
             }
             'poll_scope: {
-                if let ::core::ops::ControlFlow::Continue(__fut_inner) = __fut4 {
-                    if let ::core::task::Poll::Ready(__o) = ::core::future::Future::poll(
-                        unsafe { ::core::pin::Pin::new_unchecked(__fut_inner) },
-                        __cx,
-                    ) {
-                        if __o {
-                            ::core::mem::drop((|| "abc")());
-                            *__fut4 = ::core::ops::ControlFlow::Break(());
-                            break 'poll_scope;
-                        } else {
-                            return ::core::task::Poll::Ready((|| dbg!(0))());
-                        }
+                if let ::core::task::Poll::Ready(__o) = ::core::future::Future::poll(
+                    unsafe { ::core::pin::Pin::new_unchecked(__fut4) },
+                    __cx,
+                ) {
+                    if __o {
+                        return ::core::task::Poll::Ready((|| 0)());
                     } else {
-                        __done = false;
+                        return ::core::task::Poll::Ready((|| dbg!(0))());
                     }
+                } else {
+                    __done = false;
                 }
             }
             'poll_scope: {

@@ -557,3 +557,21 @@ fn poll_after_completion() {
         continue async {},
     });
 }
+
+#[test]
+fn poll_cyclic_must_wrap() {
+    use std::future::pending;
+    use std::task::{Context, Waker};
+
+    let mut fut = std::pin::pin!(combine_futures_cyclic! {
+        break pending::<()>(),
+        break pending::<()>(),
+    });
+    let mut cx = Context::from_waker(Waker::noop());
+
+    // Only 2 branches, so `u8`.
+    // In this case, the wrap-around should happen about 1000/256 times.
+    for _ in 0..1000 {
+        let _ = fut.as_mut().poll(&mut cx);
+    }
+}
