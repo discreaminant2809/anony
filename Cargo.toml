@@ -7,7 +7,7 @@ description = "Anonymous struct"
 repository = "https://github.com/discreaminant2809/anony.git"
 readme = "README.md"
 categories = ["rust-patterns", "no-std", "no-std::no-alloc"]
-keywords = ["anonymous", "struct", "join", "future", "try_join"]
+keywords = ["anonymous", "struct", "join", "future", "select"]
 
 [lib]
 path = "src/lib.rs" # So that `cargo readme` works.
