@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+### Fixed
+
+- Hygience fix.
+- `combine_futures_cyclic` now panics with a correct message.
+
 ## 0.6.0
 
 ### Added

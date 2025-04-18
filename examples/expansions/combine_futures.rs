@@ -9,7 +9,8 @@ fn zero_branch_case() {
     let _fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -41,7 +42,7 @@ fn zero_branch_case() {
                 () => {
                     return ::core::task::Poll::Ready((|| ())());
                 }
-                () => ::core::panic!("`combine_futures!` future polled after completion`"),
+                () => ::core::panic!("`{}!` future polled after completion`", "combine_futures"),
                 _ => unsafe { ::core::hint::unreachable_unchecked() },
             }
         }
@@ -56,7 +57,8 @@ fn one_branch_case() {
     let _fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -105,7 +107,7 @@ fn general_case_pure_break() {
     let _fut = combine_futures! {
         break async {2},
 
-        let 2 = async {2} else => break 2 => continue,
+        let 2 = async {2} else => continue => break 2,
 
         let x = fut_expr0 => continue x,
 
@@ -142,7 +144,8 @@ fn general_case_pure_break() {
     let _fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -287,11 +290,11 @@ fn general_case_pure_break() {
                         __cx,
                     ) {
                         let 2 = __o else {
-                            return ::core::task::Poll::Ready((|| 2)());
+                            ::core::mem::drop((|| {})());
+                            *__fut1 = ::core::ops::ControlFlow::Break(());
+                            break 'poll_scope;
                         };
-                        ::core::mem::drop((|| {})());
-                        *__fut1 = ::core::ops::ControlFlow::Break(());
-                        break 'poll_scope;
+                        return ::core::task::Poll::Ready((|| 2)());
                     } else {
                         __done = false;
                     }
@@ -392,7 +395,7 @@ fn general_case_no_pure_break() {
 
         continue async {2},
 
-        let 2 = async {2} else => break 2 => continue,
+        let 2 = async {2} else => continue => break 2,
 
         let x = fut_expr0 => continue x,
 
@@ -432,7 +435,8 @@ fn general_case_no_pure_break() {
     let fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -606,12 +610,12 @@ fn general_case_no_pure_break() {
                         __cx,
                     ) {
                         let 2 = __o else {
-                            return ::core::task::Poll::Ready((|| 2)());
+                            *__fut1 = ::core::ops::ControlFlow::Break(
+                                ::core::option::Option::Some((|| {})()),
+                            );
+                            break 'poll_scope;
                         };
-                        *__fut1 = ::core::ops::ControlFlow::Break(::core::option::Option::Some(
-                            (|| {})(),
-                        ));
-                        break 'poll_scope;
+                        return ::core::task::Poll::Ready((|| 2)());
                     } else {
                         __done = false;
                     }
@@ -740,7 +744,7 @@ fn general_case_no_pure_break() {
                         ));
                     }
                     (None, None, None, None, None, None) => {
-                        ::core::panic!("`combine_futures!` future polled after completion`")
+                        ::core::panic!("`{}!` future polled after completion`", "combine_futures")
                     }
                     _ => unsafe { ::core::hint::unreachable_unchecked() },
                 }

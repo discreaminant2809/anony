@@ -32,8 +32,8 @@
 //! assert_eq!(x.1, [1, 3, 5]);
 //! ```
 //!
-//! [`combine_futures!`] and [`combine_futures_cyclic!`]:
-//! General-purpose future combinators. Requires the `future` feature.
+//! * [`combine_futures!`] and [`combine_futures_cyclic!`]:
+//!   General-purpose future concurrency combinators. Requires the `future` feature.
 //!
 //! ```rust
 //! # futures::executor::block_on(async {
@@ -773,7 +773,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Overview
 ///
-/// This macro is a general-purpose future combinator.
+/// This macro is a general-purpose future concurrency combinator.
 /// It is a fusion of `join`, `select`, `race`, `race_ok`, etc. They all share a common theme:
 /// running futures concurrently, but differ in how they handle outputs—often implicitly through [`Result`],
 /// or with limited support for pattern matching.
@@ -963,8 +963,8 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// ```
 ///
 /// - When no such branch exists and no continue collector is specified, all outputs from continue arms are collected
-///   into a tuple (even an unary tuple or unit type), and all break arms must return the same tuple type.
-///   A custom continue collector can be used to unify all outputs.
+///   into a tuple (even an unary tuple or unit type) by default, and all break arms must return the same tuple type.
+///   A custom continue collector can be used to map the outputs to anything else as desired.
 ///
 /// ```
 /// # futures::executor::block_on(async {
@@ -1109,7 +1109,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// # });
 /// ```
 ///
-/// And more—this macro is, after all, a generalization of many common future combinators!
+/// And more—this macro is, after all, a generalization of many common future concurrency combinators!
 ///
 /// # Ergonomics
 ///

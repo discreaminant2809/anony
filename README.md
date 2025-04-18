@@ -34,8 +34,8 @@ assert_eq!(x.0, "discreaminant");
 assert_eq!(x.1, [1, 3, 5]);
 ```
 
-[`combine_futures!`] and [`combine_futures_cyclic!`]:
-General-purpose future combinators. Requires the `future` feature.
+* [`combine_futures!`] and [`combine_futures_cyclic!`]:
+  General-purpose future concurrency combinators. Requires the `future` feature.
 
 ```rust
 let mut s = String::new();

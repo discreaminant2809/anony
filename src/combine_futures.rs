@@ -69,7 +69,6 @@ macro_rules! quote_mixed_site {
 fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> pm2::TokenStream {
     let any_pure_break = pure_breaks.is_some();
 
-    let necessary_imports = necessary_imports();
     let fut_ty = Ident::new(
         if is_cyclic {
             "CombineFuturesCyclic"
@@ -89,10 +88,10 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
             let #to_skip_ident = (
                 ::core::mem::replace(
                     #to_skip_ident,
-                    *#to_skip_ident + ::core::num::Wrapping(1),
+                    *#to_skip_ident + Wrapping(1),
                 )
-                + ::core::num::Wrapping(<*mut _>::addr(cx) as _)
-            ) % ::core::num::Wrapping(#fut_count);
+                + Wrapping(<*mut _>::addr(cx) as _)
+            ) % Wrapping(#fut_count);
         }
     });
 
@@ -240,6 +239,12 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
 
         let many_none = (0..input.branches.len()).map(|_| quote_mixed_site! { None });
 
+        let macro_name = if is_cyclic {
+            "combine_futures_cyclic"
+        } else {
+            "combine_futures"
+        };
+
         quote_mixed_site! {
             if __done {
                 let (#(::core::ops::ControlFlow::Break(#o_idents),)*) = (#(#fut_idents,)*) else {
@@ -250,7 +255,7 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
                     (#(::core::option::Option::Some(#o_idents),)*) => {
                         return ::core::task::Poll::Ready((#continue_collector)(#(#o_idents),*));
                     }
-                    (#(#many_none,)*) => ::core::panic!("`combine_futures!` future polled after completion`"),
+                    (#(#many_none,)*) => ::core::panic!("`{}!` future polled after completion`", #macro_name),
                     // SAFETY: it's all (all continue values are available) or nothing (all have been taken).
                     // It does lead to better code gen.
                     _ => unsafe { ::core::hint::unreachable_unchecked() },
@@ -294,7 +299,13 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
     };
 
     quote_mixed_site! {({
-        #necessary_imports
+        use ::core::future::{Future, IntoFuture};
+        use ::core::marker::Unpin;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
+        use ::core::option::Option;
+        use ::core::pin::Pin;
+        use ::core::task::{Context, Poll};
 
         // #[pin_project]
         enum #fut_ty #bounded_generics {
@@ -361,18 +372,6 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
     )}
 }
 
-// NOTE: this does not import for the selector, since it's unhygiene by user code.
-fn necessary_imports() -> pm2::TokenStream {
-    quote_mixed_site! {
-        use ::core::future::{Future, IntoFuture};
-        use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
-        use ::core::option::Option;
-        use ::core::pin::Pin;
-        use ::core::task::{Context, Poll};
-    }
-}
-
 fn to_skip(is_cyclic: bool, n: u128) -> [pm2::TokenStream; 3] {
     if !is_cyclic {
         return Default::default();
@@ -391,9 +390,9 @@ fn to_skip(is_cyclic: bool, n: u128) -> [pm2::TokenStream; 3] {
     };
 
     [
-        quote_mixed_site! { ::core::num::Wrapping<::core::primitive::#to_skip_ty> },
+        quote_mixed_site! { Wrapping<::core::primitive::#to_skip_ty> },
         quote_mixed_site! { __to_skip },
-        quote_mixed_site! { ::core::num::Wrapping(0) },
+        quote_mixed_site! { Wrapping(0) },
     ]
 }
 

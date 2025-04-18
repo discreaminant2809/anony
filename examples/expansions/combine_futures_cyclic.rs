@@ -9,7 +9,8 @@ fn zero_branch_case() {
     let _fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -41,7 +42,7 @@ fn zero_branch_case() {
                 () => {
                     return ::core::task::Poll::Ready((|| ())());
                 }
-                () => ::core::panic!("`combine_futures!` future polled after completion`"),
+                () => ::core::panic!("`{}!` future polled after completion`", "combine_futures"),
                 _ => unsafe { ::core::hint::unreachable_unchecked() },
             }
         }
@@ -56,7 +57,8 @@ fn one_branch_case() {
     let _fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -105,7 +107,7 @@ fn general_case_pure_break() {
     let _fut = combine_futures_cyclic! {
         break async {2},
 
-        let 2 = async {2} else => break 2 => continue,
+        let 2 = async {2} else => continue => break 2,
 
         let x = fut_expr0 => continue x,
 
@@ -142,7 +144,8 @@ fn general_case_pure_break() {
     let _fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -161,7 +164,7 @@ fn general_case_pure_break() {
                 &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > {
@@ -173,7 +176,7 @@ fn general_case_pure_break() {
                 F4,
                 ControlFlow<(), F5>,
                 S,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ),
         }
         impl<
@@ -191,7 +194,7 @@ fn general_case_pure_break() {
                 &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > CombineFuturesCyclic<F0, F1, F2, F3, F4, F5, S, O>
@@ -213,7 +216,7 @@ fn general_case_pure_break() {
                     IntoFuture::into_future(__fut4),
                     ControlFlow::Continue(IntoFuture::into_future(__fut5)),
                     selector,
-                    ::core::num::Wrapping(0),
+                    Wrapping(0),
                 )
             }
         }
@@ -232,7 +235,7 @@ fn general_case_pure_break() {
                 &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > Unpin for CombineFuturesCyclic<F0, F1, F2, F3, F4, F5, S, O>
@@ -254,7 +257,7 @@ fn general_case_pure_break() {
                 &mut F4,
                 &mut ControlFlow<(), F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > Future for CombineFuturesCyclic<F0, F1, F2, F3, F4, F5, S, O>
@@ -271,10 +274,9 @@ fn general_case_pure_break() {
                     selector,
                     __to_skip,
                 ) = unsafe { Pin::get_unchecked_mut(self) };
-                let __to_skip =
-                    (::core::mem::replace(__to_skip, *__to_skip + ::core::num::Wrapping(1))
-                        + ::core::num::Wrapping(<*mut _>::addr(cx) as _))
-                        % ::core::num::Wrapping(6);
+                let __to_skip = (::core::mem::replace(__to_skip, *__to_skip + Wrapping(1))
+                    + Wrapping(<*mut _>::addr(cx) as _))
+                    % Wrapping(6);
                 selector(
                     __fut0, __fut1, __fut2, __fut3, __fut4, __fut5, cx, __to_skip,
                 )
@@ -311,11 +313,11 @@ fn general_case_pure_break() {
                                     __cx,
                                 ) {
                                     let 2 = __o else {
-                                        return ::core::ops::ControlFlow::Break((|| 2)());
+                                        ::core::mem::drop((|| {})());
+                                        *__fut1 = ::core::ops::ControlFlow::Break(());
+                                        break 'poll_scope;
                                     };
-                                    ::core::mem::drop((|| {})());
-                                    *__fut1 = ::core::ops::ControlFlow::Break(());
-                                    break 'poll_scope;
+                                    return ::core::ops::ControlFlow::Break((|| 2)());
                                 } else {
                                     __done = false;
                                 }
@@ -424,7 +426,7 @@ fn general_case_no_pure_break() {
 
         continue async {2},
 
-        let 2 = async {2} else => break 2 => continue,
+        let 2 = async {2} else => continue => break 2,
 
         let x = fut_expr0 => continue x,
 
@@ -464,7 +466,8 @@ fn general_case_no_pure_break() {
     let fut = ({
         use ::core::future::{Future, IntoFuture};
         use ::core::marker::Unpin;
-        use ::core::ops::ControlFlow;
+        use ::core::num::Wrapping;
+        use ::core::ops::{ControlFlow, FnMut};
         use ::core::option::Option;
         use ::core::pin::Pin;
         use ::core::task::{Context, Poll};
@@ -489,7 +492,7 @@ fn general_case_no_pure_break() {
                 &mut ControlFlow<Option<C4>, F4>,
                 &mut ControlFlow<Option<C5>, F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > {
@@ -501,7 +504,7 @@ fn general_case_no_pure_break() {
                 ControlFlow<Option<C4>, F4>,
                 ControlFlow<Option<C5>, F5>,
                 S,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ),
         }
         impl<
@@ -525,7 +528,7 @@ fn general_case_no_pure_break() {
                 &mut ControlFlow<Option<C4>, F4>,
                 &mut ControlFlow<Option<C5>, F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > CombineFuturesCyclic<F0, F1, F2, F3, F4, F5, C0, C1, C2, C3, C4, C5, S, O>
@@ -547,7 +550,7 @@ fn general_case_no_pure_break() {
                     ControlFlow::Continue(IntoFuture::into_future(__fut4)),
                     ControlFlow::Continue(IntoFuture::into_future(__fut5)),
                     selector,
-                    ::core::num::Wrapping(0),
+                    Wrapping(0),
                 )
             }
         }
@@ -572,7 +575,7 @@ fn general_case_no_pure_break() {
                 &mut ControlFlow<Option<C4>, F4>,
                 &mut ControlFlow<Option<C5>, F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > Unpin for CombineFuturesCyclic<F0, F1, F2, F3, F4, F5, C0, C1, C2, C3, C4, C5, S, O>
@@ -600,7 +603,7 @@ fn general_case_no_pure_break() {
                 &mut ControlFlow<Option<C4>, F4>,
                 &mut ControlFlow<Option<C5>, F5>,
                 &mut Context<'_>,
-                ::core::num::Wrapping<::core::primitive::u8>,
+                Wrapping<::core::primitive::u8>,
             ) -> Poll<O>,
             O,
         > Future for CombineFuturesCyclic<F0, F1, F2, F3, F4, F5, C0, C1, C2, C3, C4, C5, S, O>
@@ -617,10 +620,9 @@ fn general_case_no_pure_break() {
                     selector,
                     __to_skip,
                 ) = unsafe { Pin::get_unchecked_mut(self) };
-                let __to_skip =
-                    (::core::mem::replace(__to_skip, *__to_skip + ::core::num::Wrapping(1))
-                        + ::core::num::Wrapping(<*mut _>::addr(cx) as _))
-                        % ::core::num::Wrapping(6);
+                let __to_skip = (::core::mem::replace(__to_skip, *__to_skip + Wrapping(1))
+                    + Wrapping(<*mut _>::addr(cx) as _))
+                    % Wrapping(6);
                 selector(
                     __fut0, __fut1, __fut2, __fut3, __fut4, __fut5, cx, __to_skip,
                 )
@@ -662,12 +664,12 @@ fn general_case_no_pure_break() {
                                     __cx,
                                 ) {
                                     let 2 = __o else {
-                                        return ::core::ops::ControlFlow::Break((|| 2)());
+                                        *__fut1 = ::core::ops::ControlFlow::Break(
+                                            ::core::option::Option::Some((|| {})()),
+                                        );
+                                        break 'poll_scope;
                                     };
-                                    *__fut1 = ::core::ops::ControlFlow::Break(
-                                        ::core::option::Option::Some((|| {})()),
-                                    );
-                                    break 'poll_scope;
+                                    return ::core::ops::ControlFlow::Break((|| 2)());
                                 } else {
                                     __done = false;
                                 }
@@ -804,9 +806,10 @@ fn general_case_no_pure_break() {
                             __o0, __o1, __o2, __o3, __o4, __o5
                         ));
                     }
-                    (None, None, None, None, None, None) => {
-                        ::core::panic!("`combine_futures!` future polled after completion`")
-                    }
+                    (None, None, None, None, None, None) => ::core::panic!(
+                        "`{}!` future polled after completion`",
+                        "combine_futures_cyclic"
+                    ),
                     _ => unsafe { ::core::hint::unreachable_unchecked() },
                 }
             }
