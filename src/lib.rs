@@ -1030,6 +1030,9 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// This may introduce bias and starvation.
 /// Consider using [`combine_futures_cyclic!`] for a fairer variant.
 ///
+/// `break`, `continue`, `return`, and `?` are local to handlers and `if` guards.  
+/// They cannot break out of their respective local scopes.
+///
 /// # Empty macro
 ///
 /// For a macro without branches, it is considered—as per the specifications—not to have a pure-break branch,
@@ -1038,6 +1041,14 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// Furthermore, since there are no branches, there is nothing to collect from.
 /// As a result, it resolves to the unit type if no continue collector is provided,
 /// and a continue collector requires no parameters.
+///
+/// # Cancellation
+///
+/// Be cautious when there are break arms: they cause the macro to complete early without awaiting other branches.
+/// Since [polling a completed future is an unspecified behavior](https://doc.rust-lang.org/std/future/trait.Future.html#panics),
+/// the macro cannot be reliably repolled to drive remaining futures to completion.
+/// Dropping the macro is the only valid action after it completes—which may drop futures while they are mid-poll.
+/// This can lead to classic cancellation problems, and should be addressed using proper techniques.
 ///
 /// # Similar constructs
 ///
@@ -1127,6 +1138,39 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///   - `continue` can't carry a value. One option is to make it implicit, and use `break` as the only signal.
 ///     Even then, macro limitations present challenges, not to mention optimizations.
 ///     They may be possible if this macro... is a first-class syntax.
+/// - Allow mutating futures in the macro, like `select!`?
+///   - `select!` and this macro are fundamentally different:
+///     - The former is a control-flow construct (similar to `if` and `match` expressions),
+///     - The latter returns an instance of an anonymous type (similar to closures and `async` blocks).
+///       This also explains the behavior of `break`, `continue`, `return` and `?` inside handlers and `if` guards.
+///
+///   - Moreover, to mutate a future, you must already have a mutable reference to it.
+///     But if it's mounted inside a branch, you have effectively created two mutable references to the same future.
+///     You can only perform the mutation outside the macro—after the mutable reference used in the branch is gone.
+/// - Support `?`? (e.g., `continue fut?`, `match fut?`)
+///
+///   Translating from `try_join` to this macro (as shown above) can be quite boilerplate-heavy,
+///   so supporting `?` is a good addition. However:
+///   - the [`Try`] trait is still unstable. Should we just limit support to [`Result`]?
+///   - Syntax-wise, `?` introduces ambiguity:
+///   ```ignore
+///   combine_futures! {
+///       continue create_fut()?,
+///   }
+///
+///   // What if the user meant this?
+///   let fut = create_fut()?;
+///   combine_futures! {
+///       continue fut,
+///   }
+///   ```
+///
+///   Since the future is parsed as an expression, it will "absorb" everything near it,
+///   as long as it still forms a valid expression.  
+///   We could consider syntax like `try match fut`, but that feels awkward and counterintuitive
+///   (there is no such syntax in Rust yet).
+///
+/// [`Try`]: https://doc.rust-lang.org/core/ops/trait.Try.html
 ///
 /// # Example Expansions
 ///
