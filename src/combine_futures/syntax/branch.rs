@@ -5,6 +5,7 @@ use super::{BranchIf, BranchIfIfArm, BranchLet, BranchMatch, BranchShortHand};
 
 /// Branch containing a future that will be run concurrently.
 #[derive(ToTokens)]
+#[allow(clippy::large_enum_variant)]
 pub enum Branch {
     /// `let`-like branch.
     Let(BranchLet),
