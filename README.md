@@ -12,12 +12,12 @@ use anony::r#struct;
 let items = vec![1, 3, 5];
 
 let x = r#struct! {
-    name: "discreaminant".to_owned(),
+    name: "anony".to_owned(),
     // Move the `items` variable into the struct
     items,
 };
 
-assert_eq!(x.name, "discreaminant");
+assert_eq!(x.name, "anony");
 assert_eq!(x.items, [1, 3, 5]);
 ```
 
@@ -28,9 +28,9 @@ use anony::tuple;
 
 let items = vec![1, 3, 5];
 
-let x = tuple!("discreaminant".to_owned(), items);
+let x = tuple!("anony".to_owned(), items);
 
-assert_eq!(x.0, "discreaminant");
+assert_eq!(x.0, "anony");
 assert_eq!(x.1, [1, 3, 5]);
 ```
 

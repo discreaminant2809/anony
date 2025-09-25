@@ -10,12 +10,12 @@
 //! let items = vec![1, 3, 5];
 //!
 //! let x = r#struct! {
-//!     name: "discreaminant".to_owned(),
+//!     name: "anony".to_owned(),
 //!     // Move the `items` variable into the struct
 //!     items,
 //! };
 //!
-//! assert_eq!(x.name, "discreaminant");
+//! assert_eq!(x.name, "anony");
 //! assert_eq!(x.items, [1, 3, 5]);
 //! ```
 //!
@@ -26,9 +26,9 @@
 //!
 //! let items = vec![1, 3, 5];
 //!
-//! let x = tuple!("discreaminant".to_owned(), items);
+//! let x = tuple!("anony".to_owned(), items);
 //!
-//! assert_eq!(x.0, "discreaminant");
+//! assert_eq!(x.0, "anony");
 //! assert_eq!(x.1, [1, 3, 5]);
 //! ```
 //!
@@ -1001,7 +1001,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// The macro can capture variables from outside, similar to closures and `async` blocks.
 /// These are used in arms, `if` guards, and continue collectors.
 /// By default, it captures by reference.
-/// Use the `move` keyword to capture by value, like closures and `async` blocks.
+/// Place the `move` keyword at the start of the macro to capture by value, just like with closures and `async` blocks.
 ///
 /// ```
 /// # use anony::combine_futures;
@@ -1018,13 +1018,16 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 /// assert_static(fut);
 /// ```
 ///
-/// **Note**: Regardless of the `move` keyword, futures mounted in branches are always moved,
-/// and the macro cannnot consume captured variables-even with `move`.
+/// **Note**: Regardless of the `move` keyword, futures mounted in branches are always moved.
+/// Additionally, there is a current limitation: the macro cannot consume captured variables—even with `move`.
+/// It may be lifted in the future.
 ///
 /// Futures inside the macro are guaranteed to be dropped when the macro itself is dropped.
 /// However, during its lifetime, the order in which they are dropped is unspecified.
 ///
-/// The macro implements [`Unpin`] if all futures it contains also implement [`Unpin`].
+/// All contained futures must implement [`IntoFuture`].
+/// They are converted into [`Future`]s when the macro is constructed.
+/// The macro implements [`Unpin`] if all converted futures also implement [`Unpin`].
 ///
 /// In a single poll instance, branches are always polled in the order they are written.  
 /// This may introduce bias and starvation.
@@ -1035,7 +1038,7 @@ pub fn try_join_cyclic(token_stream: pm::TokenStream) -> pm::TokenStream {
 ///
 /// # Empty macro
 ///
-/// For a macro without branches, it is considered—as per the specifications—not to have a pure-break branch,
+/// For a macro without branches, it is considered–as per the specifications–NOT to have a pure-break branch,
 /// so a continue collector is allowed.
 ///
 /// Furthermore, since there are no branches, there is nothing to collect from.
