@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2
+
+### Fixed
+
+- Hygience fix.
+
 ## 0.6.1
 
 ### Fixed
