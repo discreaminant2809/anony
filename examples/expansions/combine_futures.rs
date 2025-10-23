@@ -743,9 +743,14 @@ fn general_case_no_pure_break() {
                             __o0, __o1, __o2, __o3, __o4, __o5
                         ));
                     }
-                    (None, None, None, None, None, None) => {
-                        ::core::panic!("`{}!` future polled after completion`", "combine_futures")
-                    }
+                    (
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                    ) => ::core::panic!("`{}!` future polled after completion`", "combine_futures"),
                     _ => unsafe { ::core::hint::unreachable_unchecked() },
                 }
             }

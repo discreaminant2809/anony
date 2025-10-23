@@ -237,7 +237,8 @@ fn imp_impl(input: &Input, pure_breaks: Option<Vec<bool>>, is_cyclic: bool) -> p
             |expr| expr.to_token_stream(),
         );
 
-        let many_none = (0..input.branches.len()).map(|_| quote_mixed_site! { None });
+        let many_none =
+            (0..input.branches.len()).map(|_| quote_mixed_site! { ::core::option::Option::None });
 
         let macro_name = if is_cyclic {
             "combine_futures_cyclic"
